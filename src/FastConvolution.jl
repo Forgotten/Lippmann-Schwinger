@@ -43,6 +43,48 @@ function *(M::FastM, b::Array{Complex128,1})
     return (b + B[:])
 end
 
+type FastMslow
+    # type to encapsulate the fast application of M = I + omega^2G*spadiagm(nu)
+    GFFT :: Array{Complex128,2}
+    nu :: Array{Float64,1}
+    x  :: Array{Float64,1}
+    y  :: Array{Float64,1}
+    # number of points in the extended domain
+    ne :: Int64
+    me :: Int64
+    # number of points in the original domain
+    n  :: Int64
+    m  :: Int64
+    # frequency
+    omega :: Float64
+end
+
+
+function *(M::FastMslow, b::Array{Complex128,1})
+    # function to overload the applyication of
+    # M using a Toeplitz reduction via a FFT
+
+    #obtaining the middle index
+    indMiddle = round(Integer, M.n-1 + (M.n+1)/2)
+    # Allocate the space for the extended B
+    BExt = zeros(Complex128,M.ne, M.ne);
+    # Apply spadiagm(nu) and ented by zeros
+    BExt[1:M.n,1:M.n]= reshape((exp(1im*M.omega*M.x).*M.nu).*b,M.n,M.n) ;
+
+    # Fourier Transform
+    BFft = fft(BExt)
+    # Component-wise multiplication
+    BFft = M.GFFT.*BFft
+    # Inverse Fourier Transform
+    BExt = ifft(BFft)
+
+    # multiplication by omega^2
+    B = M.omega^2*(BExt[indMiddle: indMiddle+M.n-1, indMiddle:indMiddle+M.n-1]);
+
+    return (b + (exp(-1im*M.omega*M.x).*(B[:])))
+end
+
+#this is the sequantila version for sampling G
 function sampleG(k,X,Y,indS, D0)
     # function to sample the Green's function at frequency k
     Gc = zeros(Complex128, length(indS), length(X))
@@ -50,10 +92,92 @@ function sampleG(k,X,Y,indS, D0)
         ii = indS[i]
         r  = sqrt( (X-X[ii]).^2 + (Y-Y[ii]).^2);
         r[ii] = 1;
-        Gc[i,:] =  1im/4*hankelh1(0, k*r)*h^2;
+        Gc[i,:] = 1im/4*hankelh1(0, k*r)*h^2;
         Gc[i,ii]= 1im/4*D0*h^2;
     end
     return Gc
+end
+
+
+# @everywhere function sampleG(k,X,Y,indS, D0)
+#     # function to sample the Green's function at frequency k
+
+#     R  = SharedArray(Float64, length(indS), length(X))
+#     @sync @parallel for i = 1:length(indS)
+#       ii = indS[i]
+#       R[i,:]  = sqrt( (X-X[ii]).^2 + (Y-Y[ii]).^2);
+#       R[i,ii] = 1;
+#     end
+
+#     Gc = sampleGkernelpar(k,R,h);
+#     #Gc = (h^2*1im/4)*hankelh1(0, k*R)*h^2;
+#     for i = 1:length(indS)
+#         ii = indS[i]
+#         Gc[i,ii]= 1im/4*D0*h^2;
+#     end
+#     return Gc
+# end
+
+@everywhere function myrange(q::SharedArray)
+    idx = indexpids(q)
+    if idx == 0
+        # This worker is not assigned a piece
+        return 1:0, 1:0
+    end
+    nchunks = length(procs(q))
+    splits = [round(Int, s) for s in linspace(0,size(q,2),nchunks+1)]
+    1:size(q,1), splits[idx]+1:splits[idx+1]
+end
+
+@everywhere function sampleGkernelpar(k,r::Array{Float64,1},h)
+  n  = length(r)
+  #println(n," ")
+  G = SharedArray(Complex128,n)
+  rshared = convert(SharedArray, r)
+  @sync begin
+        @sync @parallel for ii = 1:n
+            G[ii] = 1im/4*hankelh1(0, k*rshared[ii])*h^2;
+        end
+    end
+  return sdata(G)
+end
+
+## two different versions of the same function with slight different input
+
+@everywhere function sampleGkernelpar(k,R::Array{Float64,2},h)
+  (m,n)  = size(R)
+  # println("hello", n," ",m)
+  G = SharedArray(Complex128,m,n)
+  Rshared = convert(SharedArray, R)
+  @sync begin
+        for p in procs(G)
+            @async remotecall_wait(sampleGkernel_shared_chunk!,p, G, Rshared,k,h)
+        end
+    end
+  return sdata(G)
+end
+
+@everywhere function sampleGkernelpar(k,R::SharedArray{Float64,2},h)
+  (m,n)  = size(R)
+  # println("hello", n," ",m)
+  G = SharedArray(Complex128,m,n)
+  @sync begin
+        for p in procs(G)
+            @async remotecall_wait(sampleGkernel_shared_chunk!,p, G, R,k,h)
+        end
+    end
+  return sdata(G)
+end
+
+
+# little convenience wrapper
+@everywhere sampleGkernel_shared_chunk!(q,u,k,h) = sampleGkernel_chunk!(q,u,k,h, myrange(q)...)
+
+@everywhere function sampleGkernel_chunk!(G, R,k,h, irange, jrange)
+    #@show (irange, jrange)  # display so we can see what's happening
+    for j in jrange, i in irange
+        G[i,j] = 1im/4*hankelh1(0, k*R[i,j])*h^2;
+    end
 end
 
 function entriesSparseA(k,X,Y,D0, n ,m)
@@ -403,11 +527,37 @@ function buildGConv(x,y,h,n,m,D0,k)
     Ge = 1im/4*hankelh1(0, k*R)*h^2;
     # modiyfin the diagonal with the quadrature
     # modification
-    Ge[indMiddle,indMiddle] = 1im/4* D0*h^2;
+    Ge[indMiddle,indMiddle] = 1im/4*D0*h^2;
 
 return Ge
 
 end
+
+function buildGConvPar(x,y,h,n,m,D0,k)
+
+    # build extended domain
+    xe = collect((x[1]-(n-1)*h):h:(x[end]+(n-1)*h));
+    ye = collect((y[1]-(m-1)*h):h:(y[end]+(m-1)*h));
+
+    Xe = repmat(xe, 1, 3*m-2);
+    Ye = repmat(ye', 3*n-2,1);
+
+    R = sqrt(Xe.^2 + Ye.^2);
+    # to avoid evaluating at the singularity
+    indMiddle = round(Integer, m-1 + (m+1)/2)
+    # we modify R to remove the zero (so we don't )
+    R[indMiddle,indMiddle] = 1;
+    # sampling the Green's function
+    Ge = sampleGkernelpar(k,R,h)
+    #Ge = pmap( x->1im/4*hankelh1(0,k*x)*h^2, R)
+    # modiyfin the diagonal with the quadrature
+    # modification
+    Ge[indMiddle,indMiddle] = 1im/4*D0*h^2;
+
+return Ge
+
+end
+
 
 function createIndices(row::Array{Int64,1}, col::Array{Int64,1}, val::Array{Complex128,1})
   # function to create the indices for a sparse matrix

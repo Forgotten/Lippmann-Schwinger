@@ -16,9 +16,6 @@ end
 import Base.\
 
 function \(M::SparsifyingPreconditioner, b::Array{Complex128,1})
-    #println("Applying the polarized Traces Preconditioner")
-
-    # TODO add more options to the type of preconditioner used
-    #return precondGS(M.subDomains, b)
+    # we apply the Sparsifying preconditioner 
     return M.MspInv\(M.As*b)
 end
