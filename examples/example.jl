@@ -30,11 +30,21 @@ D0 = D[1];
 # Defining the smooth perturbation of the slowness
 nu(x,y) = 0.3*exp(-40*(x.^2 + y.^2)).*(abs(x).<0.48).*(abs(y).<0.48);
 
-# Sampling the Green's function for the Toeplitz form
-Ge = buildGConv(x,y,h,n,m,D0,k);
-GFFT = fft(Ge);
+###### the line 
+###### fastconv2 = buildFastConvolution(x,y,h,k)
+###### replaces everything commented (this is left for readibily purposes)
+# # Sampling the Green's function for the Toeplitz form
+# Ge = buildGConv(x,y,h,n,m,D0,k);
+# GFFT = fft(Ge);
 
-fastconv = FastM(GFFT,nu(X,Y),3*n-2,3*m-2,n, m, k);
+# fastconv = FastM(GFFT,nu(X,Y),2*n-1,2*m-1,n, m, k);
+
+## You can choose between Duan Rohklin trapezoidal quadrature
+#fastconv = buildFastConvolution(x,y,h,k)
+
+# or Greengard Vico Quadrature (this is not optimized and is 2-3 times slower)  
+fastconv = buildFastConvolution(x,y,h,k, quadRule = "Greengard_Vico")
+
 
 # assembling the sparsifiying preconditioner
 As = buildSparseA(k,X,Y,D0, n ,m);

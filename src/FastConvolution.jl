@@ -15,6 +15,10 @@ type FastM
     m  :: Int64
     # frequency
     omega :: Float64
+    quadRule :: String 
+    function FastM(GFFT,nu,ne,me,n, m, k; quadRule::String = "trapezoidal")
+      return new(GFFT,nu,ne,me,n, m, k, quadRule)
+    end
 end
 
 import Base.*
@@ -23,25 +27,74 @@ function *(M::FastM, b::Array{Complex128,1})
     # function to overload the applyication of
     # M using a Toeplitz reduction via a FFT
 
-    #obtaining the middle index
-    indMiddle = round(Integer, M.n-1 + (M.n+1)/2)
-	  # Allocate the space for the extended B
-    BExt = zeros(Complex128,M.ne, M.ne);
-    # Apply spadiagm(nu) and ented by zeros
-   	BExt[1:M.n,1:M.n]= reshape(M.nu.*b,M.n,M.n) ;
+   #  #obtaining the middle index
+   #  indMiddle = round(Integer, M.n-1 + (M.n+1)/2)
+	  # # Allocate the space for the extended B
+   #  BExt = zeros(Complex128,M.ne, M.ne);
+   #  # Apply spadiagm(nu) and ented by zeros
+   # 	BExt[1:M.n,1:M.n]= reshape(M.nu.*b,M.n,M.n) ;
 
-   	# Fourier Transform
-   	BFft = fft(BExt)
-   	# Component-wise multiplication
-   	BFft = M.GFFT.*BFft
-   	# Inverse Fourier Transform
-   	BExt = ifft(BFft)
+   # 	# Fourier Transform
+   # 	BFft = fft(BExt)
+   # 	# Component-wise multiplication
+   # 	BFft = M.GFFT.*BFft
+   # 	# Inverse Fourier Transform
+   # 	BExt = ifft(BFft)
 
-    # multiplication by omega^2
-   	B = M.omega^2*(BExt[indMiddle: indMiddle+M.n-1, indMiddle:indMiddle+M.n-1]);
+   #  # multiplication by omega^2
+   # 	B = M.omega^2*(BExt[indMiddle: indMiddle+M.n-1, indMiddle:indMiddle+M.n-1]);
+    # return (b + B[:])
 
+    return fastconvolution(M,b)
+end
+
+@inline function fastconvolution(M::FastM, b::Array{Complex128,1})
+    # function to overload the applyication of
+    # M using a Toeplitz reduction via a FFT
+
+    if M.quadRule == "trapezoidal"
+
+      #obtaining the middle index
+      indMiddle = round(Integer, M.n)
+  
+      # Allocate the space for the extended B
+      BExt = zeros(Complex128,M.ne, M.ne);
+      # Apply spadiagm(nu) and ented by zeros
+      BExt[1:M.n,1:M.n]= reshape(M.nu.*b,M.n,M.n) ;
+  
+      # Fourier Transform
+      BFft = fft(BExt)
+      # Component-wise multiplication
+      BFft = M.GFFT.*BFft
+      # Inverse Fourier Transform
+      BExt = ifft(BFft)
+  
+      # multiplication by omega^2
+      B = M.omega^2*(BExt[indMiddle: indMiddle+M.n-1, indMiddle:indMiddle+M.n-1]);
+
+    elseif M.quadRule == "Greengard_Vico"
+      # for this we use the Greengard Vico method in the 
+      # frequency domain
+
+      # Allocate the space for the extended B
+      BExt = zeros(Complex128,M.ne, M.ne);
+      # Apply spadiagm(nu) and ented by zeros
+      BExt[1:M.n,1:M.n]= reshape(M.nu.*b,M.n,M.n) ;
+
+      # Fourier Transform
+      BFft = fftshift(fft(BExt))
+      # Component-wise multiplication
+      BFft = M.GFFT.*BFft
+      # Inverse Fourier Transform
+      BExt = ifft(ifftshift(BFft))
+  
+      # multiplication by omega^2
+      B = M.omega^2*(BExt[1:M.n, 1:M.n]);
+
+    end
     return (b + B[:])
 end
+
 
 type FastMslow
     # type to encapsulate the fast application of M = I + omega^2G*spadiagm(nu)
@@ -67,7 +120,8 @@ function *(M::FastMslow, b::Array{Complex128,1})
     # M using a Toeplitz reduction via a FFT
 
     #obtaining the middle index
-    indMiddle = round(Integer, M.n-1 + (M.n+1)/2)
+    indMiddle = round(Integer, M.n)
+
     # Allocate the space for the extended B
     BExt = zeros(Complex128,M.ne, M.ne);
     # Apply spadiagm(nu) and ented by zeros
@@ -84,9 +138,28 @@ function *(M::FastMslow, b::Array{Complex128,1})
     B = M.omega^2*(BExt[indMiddle: indMiddle+M.n-1, indMiddle:indMiddle+M.n-1]);
 
     return (b + (exp(-1im*M.omega*(M.e[1]*M.x + M.e[2]*M.y)).*(B[:])))
+
+    #old version 
+    # #obtaining the middle index
+    # indMiddle = round(Integer, M.n-1 + (M.n+1)/2)
+    # # Allocate the space for the extended B
+    # BExt = zeros(Complex128,M.ne, M.ne);
+    # # Apply spadiagm(nu) and ented by zeros
+
+    # # Fourier Transform
+    # BFft = fft(BExt)
+    # # Component-wise multiplication
+    # BFft = M.GFFT.*BFft
+    # # Inverse Fourier Transform
+    # BExt = ifft(BFft)
+
+    # # multiplication by omega^2
+    # B = M.omega^2*(BExt[indMiddle: indMiddle+M.n-1, indMiddle:indMiddle+M.n-1]);
+
+    # return (b + (exp(-1im*M.omega*(M.e[1]*M.x + M.e[2]*M.y)).*(B[:])))
 end
 
-# #this is the sequantila version for sampling G
+# #this is the sequantial version for sampling G
 # function sampleG(k,X,Y,indS, D0)
 #     # function to sample the Green's function at frequency k
 #     Gc = zeros(Complex128, length(indS), length(X))
@@ -100,16 +173,82 @@ end
 #     return Gc
 # end
 
+function buildFastConvolution(x,y,h,k; quadRule::String = "trapezoidal")
+    
+  if quadRule == "trapezoidal"
+    
+    (ppw,D) = referenceValsTrapRule();
+    D0      = D[round(Int,k*h)];
+    (n,m) = length(x), length(y)
+    Ge    = buildGConv(x,y,h,n,m,D0,k);
+    GFFT  = fft(Ge);
+    
+    return FastM(GFFT,nu(X,Y),2*n-1,1*m-1,n, m, k);
+  
+  elseif quadRule == "Greengard_Vico"
+      
+      L = (abs(x[end] - x[1]) + h)*1.5
+      (n,m) = length(x), length(y)
+      
+      if mod(n,2) == 0
+        kx = (-(2*n):1:(2*n-1) )/4;
+        ky = (-(2*m):1:(2*m-1) )/4;
+        
+        KX = 2*pi*repmat(kx, 1, 4*m);
+        KY = 2*pi*repmat(ky', 4*n,1);
+        
+        S = sqrt(KX.^2 + KY.^2);
+        
+        GFFT = Gtruncated2D(L, k, S)
+        return FastM(GFFT,nu(X,Y),4*n,4*m,n, m, k ,quadRule = "Greengard_Vico");
+      else
+        kx = (-2*(n-1):1:2*(n-1) )/4;
+        ky = (-2*(m-1):1:2*(m-1) )/4;
+  
+        KX = 2*pi*repmat(kx, 1, 4*m-3);
+        KY = 2*pi*repmat(ky', 4*n-3,1);
+        
+        S = sqrt(KX.^2 + KY.^2);
+        
+        GFFT = Gtruncated2D(L, k, S)
+  
+        return FastM(GFFT,nu(X,Y),4*n-3,4*m-3,n, m, k,quadRule = "Greengard_Vico");
+  
+    end
+  end
+end
+
+
+@inline function Gtruncated2D(L::Float64,k::Float64,s)
+    return (1 + (1im*pi/2*L*hankelh1(0,L*k))*(s.*besselj(1,L*s)) - (1im*pi/2*L*k*hankelh1(1,L*k))*besselj(0,L*s)  )./(s.^2 - k^2)
+end
 
 @everywhere function sampleG(k,X,Y,indS, D0)
     # function to sample the Green's function at frequency k
 
-    R  = SharedArray(Float64, length(indS), length(X))
-    @sync @parallel for i = 1:length(indS)
+  #   R  = SharedArray(Float64, length(indS), length(X))
+  #   Xshared = SharedArray(X)
+  #   Yshared = SharedArray(Y)
+  #   @sync begin 
+  #     @parallel for i = 1:length(indS)
+  #   #for i = 1:length(indS)
+  #     ii = indS[i]
+  #     R[i,:]  = sqrt( (X-X[ii]).^2 + (Y-Y[ii]).^2);
+  #     R[i,ii] = 1;
+  #   end
+  # end
+
+   R  = SharedArray(Float64, length(indS), length(X))
+    Xshared = convert(SharedArray, X)
+    Yshared = convert(SharedArray, Y)
+    @sync begin 
+      @parallel for i = 1:length(indS)
+      #for i = 1:length(indS)
       ii = indS[i]
-      R[i,:]  = sqrt( (X-X[ii]).^2 + (Y-Y[ii]).^2);
+      R[i,:]  = sqrt( (Xshared-Xshared[ii]).^2 + (Yshared-Yshared[ii]).^2);
       R[i,ii] = 1;
     end
+  end
 
     Gc = sampleGkernelpar(k,R,h);
     #Gc = (h^2*1im/4)*hankelh1(0, k*R)*h^2;
@@ -511,29 +650,31 @@ function buildSparseAG(k::Float64,X::Array{Float64,1},Y::Array{Float64,1},
     return AG;
 end
 
-function buildGConv(x,y,h,n,m,D0,k)
+## old version too slow 
+# function buildGConv(x,y,h,n,m,D0,k)
 
-    # build extended domain
-    xe = collect((x[1]-(n-1)*h):h:(x[end]+(n-1)*h));
-    ye = collect((y[1]-(m-1)*h):h:(y[end]+(m-1)*h));
+#     # build extended domain
+#     xe = collect((x[1]-(n-1)*h):h:(x[end]+(n-1)*h));
+#     ye = collect((y[1]-(m-1)*h):h:(y[end]+(m-1)*h));
 
-    Xe = repmat(xe, 1, 3*m-2);
-    Ye = repmat(ye', 3*n-2,1);
+#     Xe = repmat(xe, 1, 3*m-2);
+#     Ye = repmat(ye', 3*n-2,1);
 
-    R = sqrt(Xe.^2 + Ye.^2);
-    # to avoid evaluating at the singularity
-    indMiddle = round(Integer, m-1 + (m+1)/2)
-    # we modify R to remove the zero (so we don't )
-    R[indMiddle,indMiddle] = 1;
-    # sampling the Green's function
-    Ge = 1im/4*hankelh1(0, k*R)*h^2;
-    # modiyfin the diagonal with the quadrature
-    # modification
-    Ge[indMiddle,indMiddle] = 1im/4*D0*h^2;
+#     R = sqrt(Xe.^2 + Ye.^2);
+#     # to avoid evaluating at the singularity
+#     indMiddle = round(Integer, m-1 + (m+1)/2)
+#     # we modify R to remove the zero (so we don't )
+#     R[indMiddle,indMiddle] = 1;
+#     # sampling the Green's function
+#     Ge = 1im/4*hankelh1(0, k*R)*h^2;
+#     # modiyfin the diagonal with the quadrature
+#     # modification
+#     Ge[indMiddle,indMiddle] = 1im/4*D0*h^2;
 
-return Ge
+# return Ge
 
-end
+# end
+
 
 function buildGConvPar(x,y,h,n,m,D0,k)
 
@@ -559,6 +700,79 @@ function buildGConvPar(x,y,h,n,m,D0,k)
 return Ge
 
 end
+
+function buildGConv(x,y,h::Float64,n::Int64,m::Int64,D0,k::Float64)
+    # function to build the convolution vector for the 
+    # fast application of the convolution 
+
+    # this is built for odd n and odd m. 
+
+    if mod(n,2) == 1
+      # build extended domain
+      xe = collect((x[1]-(n-1)/2*h):h:(x[end]+(n-1)/2*h));
+      ye = collect((y[1]-(m-1)/2*h):h:(y[end]+(m-1)/2*h));
+
+      Xe = repmat(xe, 1, 2*m-1);
+      Ye = repmat(ye', 2*n-1,1);
+      # to avoid evaluating at the singularity
+      indMiddle = m
+
+    else 
+
+      println("so far only works for n odd")
+      # to be done
+      # # build extended domain
+      # xe = collect((x[1]-n/2*h):h:(x[end]+n/2*h));
+      # ye = collect((y[1]-m/2*h):h:(y[end]+m/2*h));
+
+      # Xe = repmat(xe, 1, 2*m-1);
+      # Ye = repmat(ye', 2*n-1,1);
+      # # to avoid evaluating at the singularity
+      # indMiddle = m
+
+    end
+
+    R = sqrt(Xe.^2 + Ye.^2);
+    
+    # we modify R to remove the zero (so we don't )
+    R[indMiddle,indMiddle] = 1;
+    # sampling the Green's function
+    Ge = sampleGkernelpar(k,R,h)
+    #Ge = pmap( x->1im/4*hankelh1(0,k*x)*h^2, R)
+    # modiyfin the diagonal with the quadrature
+    # modification
+    Ge[indMiddle,indMiddle] = 1im/4*D0*h^2;
+
+return Ge
+
+end
+
+
+function buildGConvPar(x,y,h,n,m,D0,k)
+
+    # build extended domain
+    xe = collect((x[1]-(n-1)*h):h:(x[end]+(n-1)*h));
+    ye = collect((y[1]-(m-1)*h):h:(y[end]+(m-1)*h));
+
+    Xe = repmat(xe, 1, 3*m-2);
+    Ye = repmat(ye', 3*n-2,1);
+
+    R = sqrt(Xe.^2 + Ye.^2);
+    # to avoid evaluating at the singularity
+    indMiddle = round(Integer, m-1 + (m+1)/2)
+    # we modify R to remove the zero (so we don't )
+    R[indMiddle,indMiddle] = 1;
+    # sampling the Green's function
+    Ge = sampleGkernelpar(k,R,h)
+    #Ge = pmap( x->1im/4*hankelh1(0,k*x)*h^2, R)
+    # modiyfin the diagonal with the quadrature
+    # modification
+    Ge[indMiddle,indMiddle] = 1im/4*D0*h^2;
+
+return Ge
+
+end
+
 
 
 function createIndices(row::Array{Int64,1}, col::Array{Int64,1}, val::Array{Complex128,1})
