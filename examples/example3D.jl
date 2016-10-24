@@ -18,7 +18,7 @@ BLAS.set_num_threads(4);
 
 
 #Defining Omega
-h = 0.01
+h = 0.015
 k = 1/h
 
 # size of box
@@ -66,4 +66,7 @@ println(info[2].residuals[:])
 # plotting the solution
 figure(1)
 clf()
-imshow(real(reshape(u+u_inc,n,m)))
+
+U = reshape(u+u_inc, n,m,l);
+
+imshow(real(U[:,:,15]))
