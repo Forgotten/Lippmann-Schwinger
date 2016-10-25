@@ -243,7 +243,7 @@ function buildFastConvolution3D(x,y,z,X,Y,Z,h,k,nu; quadRule::String = "Greengar
       (n,m,l) = length(x), length(y), length(z)
 
       if mod(n,2) == 0
-        
+
         kx = collect(-(2*n):1:(2*n-1) )/4;
         ky = collect(-(2*m):1:(2*m-1) )/4;
         kz = collect(-(2*l):1:(2*l-1) )/4;
@@ -254,9 +254,12 @@ function buildFastConvolution3D(x,y,z,X,Y,Z,h,k,nu; quadRule::String = "Greengar
 
         # S = sqrt(KX.^2 + KY.^2 + KZ.^2);
 
-        S  = [  sqrt(kx[i]^2 + ky[j]^2   + kz[p]^2) for i=1:4*n, j=1:4*m, p=1:4*l ]
+        ## S  = [ sqrt(kx[i]^2 + ky[j]^2 + kz[p]^2) for i=1:4*n, j=1:4*m, p=1:4*l ]
 
-        GFFT = Gtruncated3D(L, k, S)
+        ## GFFT = Gtruncated3D(L, k, S)
+
+        GFFT = [ Gtruncated3D(L,k,sqrt(kx[i]^2 + ky[j]^2 + kz[p]^2)) for i=1:4*n, j=1:4*m, p=1:4*l]
+
         return FastM3D(GFFT,nu(X,Y,Z),4*n,4*m,4*l, n, m,l, k ,quadRule = "Greengard_Vico");
       else
 
@@ -270,9 +273,11 @@ function buildFastConvolution3D(x,y,z,X,Y,Z,h,k,nu; quadRule::String = "Greengar
 
         # S = sqrt(KX.^2 + KY.^2 + KZ.^2);
 
-        S  = [  sqrt(kx[i]^2 + ky[j]^2   + kz[p]^2) for i=1:4*n-3, j=1:4*m-3, p=1:4*l-3 ]
+        ## S  = [ sqrt(kx[i]^2 + ky[j]^2 + kz[p]^2) for i=1:4*n-3, j=1:4*m-3, p=1:4*l-3 ]
 
-        GFFT = Gtruncated3D(L, k, S)
+        ## GFFT = Gtruncated3D(L, k, S)
+
+        GFFT = [ Gtruncated3D(L,k,sqrt(kx[i]^2 + ky[j]^2 + kz[p]^2)) for i=1:4*n-3, j=1:4*m-3, p=1:4*l-3 ]
 
         return FastM3D(GFFT,nu(X,Y,Z),4*n-3,4*m-3,4*l-3,n, m, l,k,quadRule = "Greengard_Vico");
 
@@ -387,6 +392,97 @@ end
 end
 
 function entriesSparseA(k,X,Y,D0, n ,m)
+  # we need to have an even number of points
+  @assert mod(length(X),2) == 1
+  Entries  = Array{Complex128}[]
+  Indices  = Array{Int64}[]
+
+  N = n*m;
+
+  # computing the entries for the interior
+  indVol = round(Integer, n*(m-1)/2 + (n+1)/2 + [-1,0,1,n,n-1,n+1,-n,-n-1, -n+1]);
+  indVolC = setdiff(collect(1:N),indVol);
+  GSampled = sampleG(k,X,Y,indVol, D0)[:,indVolC ];
+
+  # computing the sparsifying correction
+  (U,s,V) = svd(GSampled);
+  push!(Entries,U[:,end]'); #'
+  push!(Indices,[-1,0,1,n,n-1,n+1,-n,-n-1, -n+1]);
+
+  # for  x = xmin, y = 0
+  indFz1 = round(Integer, n*(m-1)/2 +1 + [0,1,n,n+1,-n, -n+1]);
+  indC = setdiff(collect(1:N),indFz1);
+  GSampled = sampleG(k,X,Y,indFz1, D0)[:,indC ];
+  (U,s,V) = svd(GSampled);
+  push!(Entries,U[:,end]'); #'
+  push!(Indices, [0,1,n,n+1,-n, -n+1]); #'
+
+  # for  x = xmax, y = 0
+  indFz2 = round(Integer, n*(n-1)/2 + [-1,0,n,n-1,-n, -n-1]);
+  indC = setdiff(collect(1:N),indFz2);
+  GSampled = sampleG(k,X,Y,indFz2, D0)[:,indC ];
+  (U,s,V) = svd(GSampled);
+  push!(Entries,U[:,end]'); #'
+  push!(Indices,[-1,0,n,n-1,-n, -n-1]); #'
+
+  # for  y = ymin, x = 0
+  indFx1 = round(Integer, (n+1)/2 + [-1,0,1,n,n+1, n-1]);
+  indC = setdiff(collect(1:N),indFx1);
+  GSampled = sampleG(k,X,Y,indFx1, D0)[:,indC ];
+  (U,s,V) = svd(GSampled);
+  push!(Entries,U[:,end]'); #'
+  push!(Indices,[-1,0,1,n,n+1, n-1]); #'
+
+  # for  y = ymin, x = 0
+  indFx2 = round(Integer, N - (n+1)/2 + [-1,0,1,-n,-n+1, -n-1]);
+  indC = setdiff(collect(1:N),indFx2);
+  GSampled = sampleG(k,X,Y,indFx2, D0)[:,indC ];
+  (U,s,V) = svd(GSampled);
+  push!(Entries,U[:,end]'); #'
+  push!(Indices,[-1,0,1,-n,-n+1, -n-1]); #'
+
+  # For the corners
+  indcorner1 = round(Integer, 1 + [0,1, n,n+1]);
+  indcorner2 = round(Integer, n + [0,-1, n,n-1]);
+  indcorner3 = round(Integer, n*m-n+1 + [0,1, -n,-n+1]);
+  indcorner4 = round(Integer, n*m + [0,-1, -n,-n-1]);
+
+  indC = setdiff(collect(1:N),indcorner1);
+  GSampled = sampleG(k,X,Y,indcorner1, D0)[:,indC ];
+  # computing the sparsifying correction
+  (U,s,V) = svd(GSampled);
+  push!(Entries,U[:,end]'); #'
+  push!(Indices,[0,1, n,n+1]); #'
+
+  #'
+  indC = setdiff(collect(1:N),indcorner2);
+  GSampled = sampleG(k,X,Y,indcorner2, D0)[:,indC ];
+  # computing the sparsifying correction
+  (U,s,V) = svd(GSampled);
+  push!(Entries,U[:,end]'); #'
+  push!(Indices,[0,-1, n,n-1]); #'
+
+  #'
+  indC = setdiff(collect(1:N),indcorner3);
+  GSampled = sampleG(k,X,Y,indcorner3, D0)[:,indC ];
+  # computing the sparsifying correction
+  (U,s,V) = svd(GSampled);
+  push!(Entries,U[:,end]'); #'
+  push!(Indices,[0,1, -n,-n+1]); #'
+
+  #'
+  indC = setdiff(collect(1:N),indcorner4);
+  GSampled = sampleG(k,X,Y,indcorner4, D0)[:,indC ];
+  # computing the sparsifying correction
+  (U,s,V) = svd(GSampled);
+  push!(Entries,U[:,end]'); #'
+  push!(Indices,[0,-1, -n,-n-1]); #'
+
+  return (Indices, Entries)
+end
+
+## TODO STILL NOT FUNCTIONAL
+function entriesSparseA3D(k,X,Y,D0, n ,m)
   # we need to have an even number of points
   @assert mod(length(X),2) == 1
   Entries  = Array{Complex128}[]

@@ -3,7 +3,7 @@
 # we test that the application is fast and that the construction
 # is performed fast.
 
-using PyPlot
+#using PyPlot
 using IterativeSolvers
 
 include("../src/FastConvolution.jl")
@@ -18,7 +18,7 @@ BLAS.set_num_threads(4);
 
 
 #Defining Omega
-h = 0.015
+h = 0.02
 k = 1/h
 
 # size of box
@@ -28,10 +28,14 @@ y = collect(-a/2:h:a/2)
 z = collect(-a/2:h:a/2)
 (n,m,l) = length(x), length(y), length(z)
 N = n*m*l
-X = [ x[i] + 0*j  + 0*p  for i=1:n, j=1:m, p=1:l ][:]
-Y = [ 0*i  + y[j] + 0*p  for i=1:n, j=1:m, p=1:l ][:]
-Z = [ 0*i  + 0*j  + z[p] for i=1:n, j=1:m, p=1:l ][:]
 
+X = zeros(n,m,l); Y = zeros(n,m,l); Z = zeros(n,m,l);
+for i=1:n, j=1:m, p=1:l
+    X[i,j,p] =  x[i];
+    Y[i,j,p] =  y[j];
+    Z[i,j,p] =  z[p];
+end
+X = X[:]; Y = Y[:]; Z = Z[:];
 # we solve \triangle u + k^2(1 + nu(x))u = 0
 
 # Defining the smooth perturbation of the slowness
@@ -64,9 +68,9 @@ u = zeros(Complex128,N);
 println(info[2].residuals[:])
 
 # plotting the solution
-figure(1)
-clf()
+# figure(1)
+# clf()
 
-U = reshape(u+u_inc, n,m,l);
+# U = reshape(u+u_inc, n,m,l);
 
-imshow(real(U[:,:,15]))
+# imshow(real(U[:,:,15]))
