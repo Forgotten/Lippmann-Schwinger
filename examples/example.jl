@@ -18,7 +18,7 @@ BLAS.set_num_threads(4);
 
 
 #Defining Omega
-h = 0.001
+h = 0.005
 k = 1/h
 
 # size of box
