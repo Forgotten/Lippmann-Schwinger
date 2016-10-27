@@ -19,10 +19,10 @@ BLAS.set_num_threads(4);
 
 #Defining Omega
 h = 0.005
-k = 1/h
+k = 1/(h)
 
 # size of box
-a  = 1
+a = 1
 x = collect(-a/2:h:a/2)
 y = collect(-a/2:h:a/2)
 (n,m) = length(x), length(y)
