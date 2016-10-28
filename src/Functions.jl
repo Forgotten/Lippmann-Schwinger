@@ -15,9 +15,9 @@ end
 
 
 @inline function Gtruncated3D{T<:Number,N}(L::Float64,k::Float64,s::Array{T,N})
-    return (-1 + exp(1im*L*k).*( cos(L*s) - (1im*k*L*sinc(L*s/pi)) ) )./( (k^2-s.^2))
+    return (-1 + exp(1im*L*k).*( cos(L*s) - (1im*k*L*sinc(L*s/pi)) ) )./( (-k^2+s.^2))
 end
 
 @inline function Gtruncated3D(L::Float64,k::Float64,s::Float64)
-    return (-1 + exp(1im*L*k)*( cos(L*s) - (1im*k*L*sinc(L*s/pi)) ))/( (k^2-s^2))
+    return (-1 + exp(1im*L*k)*( cos(L*s) - (1im*k*L*sinc(L*s/pi)) ))/( (-k^2+s^2))
 end

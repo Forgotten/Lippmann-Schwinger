@@ -37,7 +37,7 @@ type FastM
     # frequency
     omega :: Float64
     quadRule :: String
-    function FastM(GFFT,nu,ne,me,n, m, k; quadRule::String = "trapezoidal")
+    function FastM(GFFT,nu,ne,me,n,m,k; quadRule::String = "trapezoidal")
       return new(GFFT,nu,ne,me,n, m, k, quadRule)
     end
 end
@@ -52,7 +52,7 @@ function *(M::FastM, b::Array{Complex128,1})
 end
 
 
-function *(M::FastM3D, b::Array{Complex128,1}; verbose::Bool=False)
+function *(M::FastM3D, b::Array{Complex128,1}; verbose::Bool=false)
     # multiply by nu, compute the convolution and then
     # multiply by omega^2
     B = M.omega^2*(FFTconvolution(M,M.nu.*b, verbose=verbose))
@@ -63,8 +63,8 @@ end
 
 
 @inline function FFTconvolution(M::FastM3D, b::Array{Complex128,1};
-                                verbose::Bool=False )
-    println("Application of the 3D convolution")
+                                verbose::Bool=false )
+    verbose && println("Application of the 3D convolution")
     # Allocate the space for the extended B
     BExt = zeros(Complex128,M.ne, M.ne, M.le);
     # zero padding
@@ -362,7 +362,7 @@ function buildFastConvolution3D(x,y,z,X,Y,Z,h,k,nu; quadRule::String = "Greengar
         # Computing the convolution kernel (we just use a for loop in order to save memory)
         GFFT = zeros(Complex128, 4*n-3, 4*m-3, 4*l-3)
 
-        @async for i=1:4*n-3, j=1:4*m-3, p=1:4*l-3
+        for i=1:4*n-3, j=1:4*m-3, p=1:4*l-3
           GFFT[i,j,p]  = Gtruncated3D(L,k,sqrt(kx[i]^2 + ky[j]^2 + kz[p]^2));
         end
 

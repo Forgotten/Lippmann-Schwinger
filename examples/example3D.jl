@@ -3,7 +3,7 @@
 # we test that the application is fast and that the construction
 # is performed fast.
 
-#using PyPlot
+using PyPlot
 using IterativeSolvers
 
 include("../src/FastConvolution.jl")
@@ -18,14 +18,14 @@ BLAS.set_num_threads(4);
 
 
 #Defining Omega
-h = 0.02
+h = 1/64
 k = 1/h
 
 # size of box
 a  = 1
-x = collect(-a/2:h:a/2)
-y = collect(-a/2:h:a/2)
-z = collect(-a/2:h:a/2)
+x = collect(-a/2:h:a/2-h)
+y = collect(-a/2:h:a/2-h)
+z = collect(-a/2:h:a/2-h)
 (n,m,l) = length(x), length(y), length(z)
 N = n*m*l
 
@@ -72,7 +72,7 @@ rhs = -(fastconv*u_inc - u_inc);
 u = zeros(Complex128,N);
 
 # solving the system using GMRES
-@time info =  gmres!(u, fastconv, rhs, maxiter = 10, restart=10)
+@time info =  gmres!(u, fastconv, rhs, maxiter = 30, restart=5)
 println(info[2].residuals[:])
 
 # plotting the solution

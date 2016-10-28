@@ -81,6 +81,6 @@ imshow(real(UURef[:,:,round(Integer, end/2)])); colorbar();
 
 figure(3)
 clf();
-imshow(abs((UURef+UU)[:,:,round(Integer, end/2)])); colorbar()
+imshow(abs((UURef-UU)[:,:,round(Integer, end/2)])); colorbar()
 println("Error in L infinity norm is ", maximum(abs(u_rho - uRef) ))
 
