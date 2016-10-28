@@ -78,4 +78,4 @@ clf()
 
 U = reshape(u+u_inc, n,m,l);
 
-imshow(real(U[:,:,15]))
+imshow(real(U[:,:,round(Integer, end/2)]))
