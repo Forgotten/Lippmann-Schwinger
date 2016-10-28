@@ -32,6 +32,8 @@ z = collect(-a/2:h:a/2-h)
 
 N = n*m*l
 
+# creating the 3D tensor grid 
+# TODO: write a 
 X = zeros(n,m,l); Y = zeros(n,m,l); Z = zeros(n,m,l);
 for i=1:n, j=1:m, p=1:l
     X[i,j,p] =  x[i];

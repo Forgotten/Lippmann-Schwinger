@@ -30,7 +30,7 @@ z = collect(-a/2:h:a/2-h)
 N = n*m*l
 
 X = zeros(n,m,l); Y = zeros(n,m,l); Z = zeros(n,m,l);
-@async for i=1:n, j=1:m, p=1:l
+for i=1:n, j=1:m, p=1:l
     X[i,j,p] =  x[i];
     Y[i,j,p] =  y[j];
     Z[i,j,p] =  z[p];
@@ -42,12 +42,9 @@ X = X[:]; Y = Y[:]; Z = Z[:];
 nu(x,y,z) = 0.3*exp(-40*(x.^2 + y.^2 + z.^2)).*(abs(x).<0.48).*(abs(y).<0.48).*(abs(z).<0.48);
 
 # 
-figure(1)
-clf()
-
 NU = reshape(nu(X,Y,Z), n,m,l);
-
-imshow(real(NU[:,:,15]))
+#
+figure(5); clf(); imshow(real(NU[:,:,15]))
 
 ## You can choose between Duan Rohklin trapezoidal quadrature
 # fastconv = buildFastConvolution(x,y,h,k,nu)
