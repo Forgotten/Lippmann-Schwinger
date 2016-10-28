@@ -52,29 +52,18 @@ function *(M::FastM, b::Array{Complex128,1})
 end
 
 
-function *(M::FastM3D, b::Array{Complex128,1})
-    
-    # Allocate the space for the extended B
-    BExt = zeros(Complex128,M.ne, M.ne, M.le);
-    # zero padding 
-    BExt[1:M.n,1:M.m,1:M.l]= reshape(M.nu.*b,M.n,M.m,M.l) ;
+function *(M::FastM3D, b::Array{Complex128,1}; verbose::Bool=False)
+    # multiply by nu, compute the convolution and then
+    # multiply by omega^2
+    B = M.omega^2*(FFTconvolution(M,M.nu.*b, verbose=verbose))
 
-    # Fourier Transform
-    BFft = fftshift(fft(BExt))
-    # Component-wise multiplication
-    BFft = M.GFFT.*BFft
-    # Inverse Fourier Transform
-    BExt = ifft(ifftshift(BFft))
-
-    # multiplication by omega^2
-    B = M.omega^2*(BExt[1:M.n,1:M.m,1:M.l]);
-
-    return (b + B[:])
+    return (b + B)
 end
 
 
 
-function FFTconvolution(M::FastM3D, b::Array{Complex128,1})
+@inline function FFTconvolution(M::FastM3D, b::Array{Complex128,1};
+                                verbose::Bool=False )
     println("Application of the 3D convolution")
     # Allocate the space for the extended B
     BExt = zeros(Complex128,M.ne, M.ne, M.le);
@@ -89,7 +78,7 @@ function FFTconvolution(M::FastM3D, b::Array{Complex128,1})
     BExt = ifft(ifftshift(BFft))
 
     # multiplication by omega^2
-    B = (BExt[1:M.n,1:M.m,1:M.l]);
+    B = BExt[1:M.n,1:M.m,1:M.l];
 
     return B[:]
 end
@@ -322,16 +311,16 @@ function buildFastConvolution3D(x,y,z,X,Y,Z,h,k,nu; quadRule::String = "Greengar
 
  if quadRule == "Greengard_Vico"
 
-
+      Lp = 4*(abs(x[end] - x[1]) + h)
       L = (abs(x[end] - x[1]) + h)*1.8
       (n,m,l) = length(x), length(y), length(z)
       #LPhysical = abs(x[end]-x[1])+h;
 
       if mod(n,2) == 0
 
-        kx = 2*pi*collect(-(2*n):1:(2*n-1))/4;
-        ky = 2*pi*collect(-(2*m):1:(2*m-1))/4;
-        kz = 2*pi*collect(-(2*l):1:(2*l-1))/4;
+        kx = (2*pi/Lp)*collect(-(2*n):1:(2*n-1));
+        ky = (2*pi/Lp)*collect(-(2*m):1:(2*m-1));
+        kz = (2*pi/Lp)*collect(-(2*l):1:(2*l-1));
 
         # KX = 2*pi*[ kx[i] + 0*j   + 0*p   for i=1:4*n, j=1:4*m, p=1:4*l ]
         # KY = 2*pi*[ 0*i   + ky[j] + 0*p   for i=1:4*n, j=1:4*m, p=1:4*l ]
@@ -347,8 +336,8 @@ function buildFastConvolution3D(x,y,z,X,Y,Z,h,k,nu; quadRule::String = "Greengar
         # Computing the convolution kernel (we just use a for loop in order to save memory)
         GFFT = zeros(Complex128, 4*n, 4*m, 4*l)
 
-        for i=1:4*n, j=1:4*m, p=1:4*l
-          GFFT[i,j,p]  = Gtruncated3D(L,k,sqrt(kx[i]^2 + ky[j]^2 + kz[p]^2));
+        for ii=1:4*n, jj=1:4*m, pp=1:4*l
+          GFFT[ii,jj,pp]  = Gtruncated3D(L,k,sqrt(kx[ii]^2 + ky[jj]^2 + kz[pp]^2));
         end
 
         return FastM3D(GFFT,nu(X,Y,Z),4*n,4*m,4*l, n, m,l, k ,quadRule = "Greengard_Vico");
@@ -373,7 +362,7 @@ function buildFastConvolution3D(x,y,z,X,Y,Z,h,k,nu; quadRule::String = "Greengar
         # Computing the convolution kernel (we just use a for loop in order to save memory)
         GFFT = zeros(Complex128, 4*n-3, 4*m-3, 4*l-3)
 
-        for i=1:4*n-3, j=1:4*m-3, p=1:4*l-3
+        @async for i=1:4*n-3, j=1:4*m-3, p=1:4*l-3
           GFFT[i,j,p]  = Gtruncated3D(L,k,sqrt(kx[i]^2 + ky[j]^2 + kz[p]^2));
         end
 
