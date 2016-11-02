@@ -16,7 +16,6 @@ include("../src/Preconditioner.jl")
 FFTW.set_num_threads(4);
 BLAS.set_num_threads(4);
 
-
 #Defining Omega
 h = 1/64
 k = 1/h
