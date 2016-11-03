@@ -178,50 +178,6 @@ end
 end
 
 
-type FastMslow
-    # type to encapsulate the fast application of M = I + omega^2G*spadiagm(nu)
-    GFFT :: Array{Complex128,2}
-    nu :: Array{Float64,1}
-    x  :: Array{Float64,1}
-    y  :: Array{Float64,1}
-    # number of points in the extended domain
-    ne :: Int64
-    me :: Int64
-    # number of points in the original domain
-    n  :: Int64
-    m  :: Int64
-    # frequency
-    omega :: Float64
-    # direction of the plane wave
-    e ::Array{Float64,1}
-end
-
-
-function *(M::FastMslow, b::Array{Complex128,1})
-    # function to overload the applyication of
-    # M using a Toeplitz reduction via a FFT
-
-    #obtaining the middle index
-    indMiddle = round(Integer, M.n)
-
-    # Allocate the space for the extended B
-    BExt = zeros(Complex128,M.ne, M.ne);
-    # Apply spadiagm(nu) and ented by zeros
-    BExt[1:M.n,1:M.n]= reshape((exp(1im*M.omega*(M.e[1]*M.x + M.e[2]*M.y)).*M.nu).*b,M.n,M.n) ;
-
-    # Fourier Transform
-    BFft = fft(BExt)
-    # Component-wise multiplication
-    BFft = M.GFFT.*BFft
-    # Inverse Fourier Transform
-    BExt = ifft(BFft)
-
-    # multiplication by omega^2
-    B = M.omega^2*(BExt[indMiddle: indMiddle+M.n-1, indMiddle:indMiddle+M.n-1]);
-
-    return (b + (exp(-1im*M.omega*(M.e[1]*M.x + M.e[2]*M.y)).*(B[:])))
-end
-
 # #this is the sequantial version for sampling G
 # function sampleG(k,X,Y,indS, D0)
 #     # function to sample the Green's function at frequency k
@@ -784,6 +740,7 @@ function buildGConv(x,y,h::Float64,n::Int64,m::Int64,D0,k::Float64)
     return Ge
 
 end
+
 
 function buildGConvPar(x,y,h,n,m,D0,k)
 
