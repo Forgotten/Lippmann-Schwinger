@@ -4,7 +4,8 @@ using Interpolations
 
 type FastDownSampled
     # type to encapsulate the fast application of M = I + omega^2G*spadiagm(nu)
-    Fast:: FastMslow
+    # Fast:: FastMslow
+    Fast:: FastM
     n  :: Int64
     m  :: Int64
     downsample :: Int64
@@ -35,13 +36,14 @@ import Base.*
 function *(M::FastDownSampled, b::Array{Complex128,1})
     knots = (collect(1:M.downsample:M.n), collect(1:M.downsample:M.m))
     nDown = round(Integer, (M.n-1)/M.downsample +1)
-    B = reshape(b, nDown,nDown);
+    mDown = round(Integer, (M.m-1)/M.downsample +1)
+    B = reshape(b, nDown,mDown);
 
     itp_real = interpolate(real(B), BSpline(Quadratic(Reflect())), OnGrid())
     itp_imag = interpolate(imag(B), BSpline(Quadratic(Reflect())), OnGrid())
 
-    interpU =     itp_real[collect(M.downsample:M.n+M.downsample-1)/M.downsample,collect(M.downsample:M.n+M.downsample-1)/M.downsample ] +
-              1im*itp_imag[collect(M.downsample:M.n+M.downsample-1)/M.downsample,collect(M.downsample:M.n+M.downsample-1)/M.downsample];
+    interpU =     itp_real[collect(M.downsample:M.n+M.downsample-1)/M.downsample,collect(M.downsample:M.m+M.downsample-1)/M.downsample ] +
+              1im*itp_imag[collect(M.downsample:M.n+M.downsample-1)/M.downsample,collect(M.downsample:M.m+M.downsample-1)/M.downsample];
 
     u = M.Fast*interpU[:]
 

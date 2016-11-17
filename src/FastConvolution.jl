@@ -87,15 +87,17 @@ end
     # function to overload the applyication of
     # M using a Toeplitz reduction via a FFT
 
+    # computing G*(b nu)
+
     if M.quadRule == "trapezoidal"
 
       #obtaining the middle index
       indMiddle = round(Integer, M.n)
 
       # Allocate the space for the extended B
-      BExt = zeros(Complex128,M.ne, M.ne);
+      BExt = zeros(Complex128,M.ne, M.me);
       # Apply spadiagm(nu) and ented by zeros
-      BExt[1:M.n,1:M.n]= reshape(M.nu.*b,M.n,M.n) ;
+      BExt[1:M.n,1:M.m]= reshape(M.nu.*b,M.n,M.m) ;
 
       # Fourier Transform
       BFft = fft(BExt)
@@ -105,16 +107,16 @@ end
       BExt = ifft(BFft)
 
       # multiplication by omega^2
-      B = M.omega^2*(BExt[indMiddle: indMiddle+M.n-1, indMiddle:indMiddle+M.n-1]);
+      B = M.omega^2*(BExt[M.n:M.n+M.n-1, M.m:M.m+M.m-1]);
 
     elseif M.quadRule == "Greengard_Vico"
       # for this we use the Greengard Vico method in the
       # frequency domain
 
       # Allocate the space for the extended B
-      BExt = zeros(Complex128,M.ne, M.ne);
+      BExt = zeros(Complex128,M.ne, M.me);
       # Apply spadiagm(nu) and ented by zeros
-      BExt[1:M.n,1:M.n]= reshape(M.nu.*b,M.n,M.n) ;
+      BExt[1:M.n,1:M.n]= reshape(M.nu.*b,M.n,M.m) ;
 
       # Fourier Transform
       BFft = fftshift(fft(BExt))
@@ -124,9 +126,11 @@ end
       BExt = ifft(ifftshift(BFft))
 
       # multiplication by omega^2
-      B = M.omega^2*(BExt[1:M.n, 1:M.n]);
+      B = M.omega^2*(BExt[1:M.n, 1:M.m]);
 
     end
+
+    # returning b + G*(b nu)
     return (b + B[:])
 end
 
@@ -708,8 +712,7 @@ function buildGConv(x,y,h::Float64,n::Int64,m::Int64,D0,k::Float64)
 
       Xe = repmat(xe, 1, 2*m-1);
       Ye = repmat(ye', 2*n-1,1);
-      # to avoid evaluating at the singularity
-      indMiddle = m
+
 
     else
 
@@ -728,14 +731,15 @@ function buildGConv(x,y,h::Float64,n::Int64,m::Int64,D0,k::Float64)
 
     R = sqrt(Xe.^2 + Ye.^2);
 
-    # we modify R to remove the zero (so we don't )
-    R[indMiddle,indMiddle] = 1;
+    # to avoid evaluating at the singularity
+    indMiddle = find(R.==0)[1]    # we modify R to remove the zero (so we don't )
+    R[indMiddle] = 1;
     # sampling the Green's function
     Ge = sampleGkernelpar(k,R,h)
     #Ge = pmap( x->1im/4*hankelh1(0,k*x)*h^2, R)
     # modiyfin the diagonal with the quadrature
     # modification
-    Ge[indMiddle,indMiddle] = 1im/4*D0*h^2;
+    Ge[indMiddle] = 1im/4*D0*h^2;
 
     return Ge
 

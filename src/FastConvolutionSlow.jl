@@ -25,13 +25,10 @@ function *(M::FastMslow, b::Array{Complex128,1})
     # function to overload the applyication of
     # M using a Toeplitz reduction via a FFT
 
-    #obtaining the middle index
-    indMiddle = round(Integer, M.n)
-
     # Allocate the space for the extended B
-    BExt = zeros(Complex128,M.ne, M.ne);
+    BExt = zeros(Complex128,M.ne, M.me);
     # Apply spadiagm(nu) and ented by zeros
-    BExt[1:M.n,1:M.n]= reshape((exp(1im*M.omega*(M.e[1]*M.x + M.e[2]*M.y)).*M.nu).*b,M.n,M.n) ;
+    BExt[1:M.n,1:M.m]= reshape((exp(1im*M.omega*(M.e[1]*M.x + M.e[2]*M.y)).*M.nu).*b,M.n,M.m) ;
 
     # Fourier Transform
     BFft = fft(BExt)
@@ -41,7 +38,7 @@ function *(M::FastMslow, b::Array{Complex128,1})
     BExt = ifft(BFft)
 
     # multiplication by omega^2
-    B = M.omega^2*(BExt[indMiddle: indMiddle+M.n-1, indMiddle:indMiddle+M.n-1]);
+    B = M.omega^2*(BExt[M.n:2*M.n-1, M.m:2*M.m-1]);
 
     return (b + (exp(-1im*M.omega*(M.e[1]*M.x + M.e[2]*M.y)).*(B[:])))
 end
