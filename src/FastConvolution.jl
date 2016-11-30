@@ -673,31 +673,6 @@ function referenceValsTrapRule()
     return (x,w)
 end
 
-## old version too slow
-# function buildGConv(x,y,h,n,m,D0,k)
-
-#     # build extended domain
-#     xe = collect((x[1]-(n-1)*h):h:(x[end]+(n-1)*h));
-#     ye = collect((y[1]-(m-1)*h):h:(y[end]+(m-1)*h));
-
-#     Xe = repmat(xe, 1, 3*m-2);
-#     Ye = repmat(ye', 3*n-2,1);
-
-#     R = sqrt(Xe.^2 + Ye.^2);
-#     # to avoid evaluating at the singularity
-#     indMiddle = round(Integer, m-1 + (m+1)/2)
-#     # we modify R to remove the zero (so we don't )
-#     R[indMiddle,indMiddle] = 1;
-#     # sampling the Green's function
-#     Ge = 1im/4*hankelh1(0, k*R)*h^2;
-#     # modiyfin the diagonal with the quadrature
-#     # modification
-#     Ge[indMiddle,indMiddle] = 1im/4*D0*h^2;
-
-# return Ge
-
-# end
-
 
 function buildGConv(x,y,h::Float64,n::Int64,m::Int64,D0,k::Float64)
     # function to build the convolution vector for the
