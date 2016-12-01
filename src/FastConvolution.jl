@@ -361,8 +361,8 @@ end
     end
   end
 
-    Gc = sampleGkernelpar(k,R,h);
     #Gc = (h^2*1im/4)*hankelh1(0, k*R)*h^2;
+    Gc = sampleGkernelpar(k,R,h);
     for i = 1:length(indS)
         ii = indS[i]
         Gc[i,ii]= 1im/4*D0*h^2;
@@ -387,13 +387,38 @@ end
   end
 
     Gc = (exp(1im*k*R)*h^2)./(4*pi*R) ;
-    #Gc = (h^2*1im/4)*hankelh1(0, k*R)*h^2;
     for i = 1:length(indS)
         ii = indS[i]
         Gc[i,ii]= 1im/4*D0*h^2;
     end
     return Gc
 end
+
+## TODO: parallelize the sampling of the 3D Green's function
+# @everywhere function sampleG3DParallel(k,X,Y,Z, indS, D0)
+#   # function to sample the Green's function at frequency k
+
+#   R  = SharedArray(Float64, length(indS), length(X))
+#   Xshared = convert(SharedArray, X)
+#   Yshared = convert(SharedArray, Y)
+#   Zshared = convert(SharedArray, Z)
+#   @sync begin
+#       for i = 1:length(indS)
+#       #for i = 1:length(indS)
+#       ii = indS[i]
+#       R[i,:]  = sqrt( (Xshared-Xshared[ii]).^2 + (Yshared-Yshared[ii]).^2 + (Zshared-Zshared[ii]).^2);
+#       R[i,ii] = 1;
+#     end
+#   end
+
+#     Gc = (exp(1im*k*R)*h^2)./(4*pi*R) ;
+#     for i = 1:length(indS)
+#         ii = indS[i]
+#         Gc[i,ii]= 1im/4*D0*h^2;
+#     end
+#     return Gc
+# end
+
 
 
 @everywhere function myrange(q::SharedArray)
@@ -413,7 +438,7 @@ end
   G = SharedArray(Complex128,n)
   rshared = convert(SharedArray, r)
   @sync @parallel for ii = 1:n
-            G[ii] = 1im/4*hankelh1(0, k*rshared[ii])*h^2;
+          @inbounds  G[ii] = 1im/4*hankelh1(0, k*rshared[ii])*h^2;
   end
   return sdata(G)
 end
@@ -422,12 +447,12 @@ end
 
 @everywhere function sampleGkernelpar(k,R::Array{Float64,2},h)
   (m,n)  = size(R)
-  #println("Sample kernel parallel loop with chunks ")
+  println("Sample kernel parallel loop with chunks ")
   G = SharedArray(Complex128,m,n)
-  Rshared = convert(SharedArray, R)
+  @time Rshared = convert(SharedArray, R)
   @sync begin
-        @async for p in procs(G)
-             remotecall_wait(sampleGkernel_shared_chunk!,p, G, Rshared,k,h)
+        for p in procs(G)
+             @async remotecall_fetch(sampleGkernel_shared_chunk!,p, G, Rshared,k,h)
         end
     end
   return sdata(G)
@@ -449,10 +474,16 @@ end
 # little convenience wrapper
 @everywhere sampleGkernel_shared_chunk!(q,u,k,h) = sampleGkernel_chunk!(q,u,k,h, myrange(q)...)
 
-@everywhere @inline function sampleGkernel_chunk!(G, R,k,h, irange, jrange)
+@everywhere @inline function sampleGkernel_chunk!(G, R,k::Float64,h::Float64, 
+                                                  irange::UnitRange{Int64}, jrange::UnitRange{Int64})
     #@show (irange, jrange)  # display so we can see what's happening
-    for j in jrange, i in irange
-        G[i,j] = 1im/4*hankelh1(0, k*R[i,j])*h^2;
+    # println(myid())
+    # println(typeof(irange))
+    alpha = 1im/4*h^2
+    for i in irange
+      for j in jrange 
+        @inbounds G[i,j] = alpha*hankelh1(0, k*R[i,j]);
+      end
     end
 end
 
