@@ -495,75 +495,77 @@ function entriesSparseA(k,X,Y,D0, n ,m)
 
   IndRelative = zeros(Int64,3,3)
   IndRelative = [-n-1 -n -n+1;
-                    -1  0    1;
-                   n-1  n  n+1]
+                   -1  0    1;
+                  n-1  n  n+1]
 
   N = n*m;
 
   # computing the entries for the interior
-  indVol = round(Integer, n*(m-1)/2 + (n+1)/2 + [-1,0,1,n,n-1,n+1,-n,-n-1, -n+1]);
+  # extracting indices at the center of the stencil
+  indVol = round(Integer, n*(m-1)/2 + (n+1)/2 + IndRelative[:] );
+  # extracting only the far field indices 
   indVolC = setdiff(collect(1:N),indVol);
-  GSampled = sampleG(k,X,Y,indVol, D0)[:,indVolC ];
+  GSampled = sampleG(k,X,Y,indVol, D0)[:,indVolC];
 
   # computing the sparsifying correction
   (U,s,V) = svd(GSampled);
   push!(Entries,U[:,end]'); #'
-  push!(Indices,[-1,0,1,n,n-1,n+1,-n,-n-1, -n+1]);
+  push!(Indices,IndRelative[:]);
 
   # this is for the edges 
 
   # for  x = xmin, y = 0
-  indFz1 = round(Integer, n*(m-1)/2 +1 + [0,1,n,n+1,-n, -n+1]);
+  indFz1 = round(Integer, n*(m-1)/2 +1 + IndRelative[:,2:3][:]);
   indC = setdiff(collect(1:N),indFz1);
   GSampled = sampleG(k,X,Y,indFz1, D0)[:,indC ];
   (U,s,V) = svd(GSampled);
   push!(Entries,U[:,end]'); #'
-  push!(Indices, [0,1,n,n+1,-n, -n+1]); #'
+  push!(Indices, IndRelative[:,2:3][:]); #'
 
   # for  x = xmax, y = 0
-  indFz2 = round(Integer, n*(n-1)/2 + [-1,0,n,n-1,-n, -n-1]);
+  indFz2 = round(Integer, n*(m-1)/2 + IndRelative[:,1:2][:]);
   indC = setdiff(collect(1:N),indFz2);
   GSampled = sampleG(k,X,Y,indFz2, D0)[:,indC ];
   (U,s,V) = svd(GSampled);
   push!(Entries,U[:,end]'); #'
-  push!(Indices,[-1,0,n,n-1,-n, -n-1]); #'
+  push!(Indices,IndRelative[:,1:2][:]); #'
 
   # for  y = ymin, x = 0
-  indFx1 = round(Integer, (n+1)/2 + [-1,0,1,n,n+1, n-1]);
+  indFx1 = round(Integer, (n+1)/2 + IndRelative[2:3,:][:]);
   indC = setdiff(collect(1:N),indFx1);
   GSampled = sampleG(k,X,Y,indFx1, D0)[:,indC ];
   (U,s,V) = svd(GSampled);
   push!(Entries,U[:,end]'); #'
-  push!(Indices,[-1,0,1,n,n+1, n-1]); #'
+  push!(Indices, IndRelative[2:3,:][:]); #'
 
   # for  y = ymin, x = 0
-  indFx2 = round(Integer, N - (n+1)/2 + [-1,0,1,-n,-n+1, -n-1]);
+  indFx2 = round(Integer, N - (n+1)/2 + IndRelative[1:2,:][:]);
   indC = setdiff(collect(1:N),indFx2);
   GSampled = sampleG(k,X,Y,indFx2, D0)[:,indC ];
   (U,s,V) = svd(GSampled);
   push!(Entries,U[:,end]'); #'
-  push!(Indices,[-1,0,1,-n,-n+1, -n-1]); #'
+  push!(Indices,IndRelative[1:2,:][:]); #'
 
   # For the corners
-  indcorner1 = round(Integer, 1 + [0,1, n,n+1]);
-  indcorner2 = round(Integer, n + [0,-1, n,n-1]);
-  indcorner3 = round(Integer, n*m-n+1 + [0,1, -n,-n+1]);
-  indcorner4 = round(Integer, n*m + [0,-1, -n,-n-1]);
+  indcorner1 = round(Integer, 1       + IndRelative[2:3,2:3][:]);
+  indcorner2 = round(Integer, n       + IndRelative[2:3,1:2][:]);
+  indcorner3 = round(Integer, n*m-n+1 + [0, 1,-n,-n+1]);
+  indcorner4 = round(Integer, n*m     + [0,-1,-n,-n-1]);
 
   indC = setdiff(collect(1:N),indcorner1);
   GSampled = sampleG(k,X,Y,indcorner1, D0)[:,indC ];
   # computing the sparsifying correction
   (U,s,V) = svd(GSampled);
   push!(Entries,U[:,end]'); #'
-  push!(Indices,[0,1, n,n+1]); #'
+  push!(Indices, IndRelative[2:3,2:3][:]); #'
 
   #'
   indC = setdiff(collect(1:N),indcorner2);
   GSampled = sampleG(k,X,Y,indcorner2, D0)[:,indC ];
   # computing the sparsifying correction
   (U,s,V) = svd(GSampled);
-  push!(Entries,U[:,end]'); #'
-  push!(Indices,[0,-1, n,n-1]); #'
+  push!(Entries, U[:,end]'); #'
+  push!(Indices, IndRelative[2:3,1:2][:]); #'
 
   #'
   indC = setdiff(collect(1:N),indcorner3);
@@ -585,30 +587,35 @@ function entriesSparseA(k,X,Y,D0, n ,m)
 end
 
 
-function entriesSparseA3D(k,X,Y,Z, n ,m, l)
+function entriesSparseA3D(k,X,Y,Z,D0, n ,m, l)
   # in this case we need to build everythig with ranodmized methods 
   # we need to have an odd number of points
-  @assert mod(length(X),2) == 1
+  #@assert mod(length(X),2) == 1
   Entries  = Array{Complex128}[]
   Indices  = Array{Int64}[]
 
   N = n*m*l;
 
   Ind_relative = zeros(Int64,3,3,3)
-  Ind_relative[:,1,:] = [(-m*n-n-1) (-m*n-n) (-m*n-n+1);
+  Ind_relative[:,:,1] = [(-m*n-n-1) (-m*n-n) (-m*n-n+1);
                          (-m*n  -1) (-m*n  ) (-m*n  +1);
-                         (-m*n+n-1) (-m*n+n) (-m*n+n+1) ];
+                         (-m*n+n-1) (-m*n+n) (-m*n+n+1) ]';
 
-  Ind_relative[:,2,:] = [-n-1 -n -n+1; 
+  Ind_relative[:,:,2] = [-n-1 -n -n+1; 
                            -1  0    1;
-                          n-1  n  n+1]; 
+                          n-1  n  n+1]'; 
 
-  Ind_relative[:,3,:] = [(m*n-n-1) (m*n-n) (m*n-n+1);
+  Ind_relative[:,:,3] = [(m*n-n-1) (m*n-n) (m*n-n+1);
                          (m*n  -1) (m*n  ) (m*n  +1);
-                         (m*n+n-1) (m*n+n) (m*n+n+1) ];                        
+                         (m*n+n-1) (m*n+n) (m*n+n+1) ]';                        
 
   # computing the entries for the interior
-  indVol = round(Integer, l*n*(m-1)/2 + l*(m-1)/2  + (l+1)/2 + Ind_relative[:]);
+
+  nHalf = round(Integer,n/2);
+  mHalf = round(Integer,m/2);
+  lHalf = round(Integer,l/2);
+
+  indVol = round(Integer, changeInd3D(nHalf,mHalf,lHalf,n,m,l)+Ind_relative[:]);
   
   indVolC = setdiff(collect(1:N),indVol);
   GSampled = sampleG3D(k,X,Y,Z,indVol, D0)[:,indVolC ];
@@ -620,76 +627,232 @@ function entriesSparseA3D(k,X,Y,Z, n ,m, l)
   
 
   # for  x = xmin,  y = anything z = anything
-  indFz1 = round(Integer, l*n*(m-1)/2 + l*(m-1)/2 + 1 + (Ind_relative[:,:,2:3])[:] );
+  indFx1 = round(Integer, changeInd3D(1,mHalf,lHalf,n,m,l) + Ind_relative[2:3,:,:][:] );
+  indC = setdiff(collect(1:N),indFx1);
+  GSampled = sampleG3D(k,X,Y,Z,indFx1, D0)[:,indC ];
+   # computing the sparsifying correction
+  (U,s,V) = svd(GSampled);
+  # saving the entries
+  push!(Entries,U[:,end]'); #'
+  push!(Indices,Ind_relative[2:3,:,:][:] );#'
+
+  
+  # for  x = xmax, y = any z = any
+  indFxN = round(Integer, changeInd3D(n,mHalf,lHalf,n,m,l) + Ind_relative[1:2,:,:][:]);
+  indC = setdiff(collect(1:N),indFxN);
+  GSampled = sampleG3D(k,X,Y,Z,indFxN, D0)[:,indC ];
+  (U,s,V) = svd(GSampled);
+  # saving the entries
+  push!(Entries,U[:,end]'); #'
+  push!(Indices, Ind_relative[1:2,:,:][:]); #'
+
+
+  # for  y = ymin, x = any z = any
+  indFy1 = round(Integer, changeInd3D(nHalf,1,lHalf,n,m,l) + Ind_relative[:,2:3,:][:] );
+  indC = setdiff(collect(1:N),indFy1);
+  GSampled = sampleG3D(k,X,Y,Z,indFy1, D0)[:,indC ];
+  (U,s,V) = svd(GSampled);
+  # saving the entries
+  push!(Entries,U[:,end]'); #'
+  push!(Indices,Ind_relative[:,2:3,:][:]); #'
+
+  # for  y = ymax, x = any z = any
+  indFyN = round(Integer, changeInd3D(nHalf,m,lHalf,n,m,l) + Ind_relative[:,1:2,:][:] );
+  indC = setdiff(collect(1:N),indFyN);
+  GSampled = sampleG3D(k,X,Y,Z,indFyN, D0)[:,indC ];
+  (U,s,V) = svd(GSampled);
+  # saving the entries
+  push!(Entries,U[:,end]'); #'
+  push!(Indices,Ind_relative[:,1:2,:][:] ); #'
+
+  # for  z = zmin, x = any y = any
+  indFz1 = round(Integer, changeInd3D(nHalf,mHalf,1,n,m,l) + Ind_relative[:,:,2:3][:] );
   indC = setdiff(collect(1:N),indFz1);
   GSampled = sampleG3D(k,X,Y,Z,indFz1, D0)[:,indC ];
   (U,s,V) = svd(GSampled);
   push!(Entries,U[:,end]'); #'
-  push!(Indices,(Ind_relative[:,:,2:3])[:]);#'
+  push!(Indices,Ind_relative[:,:,2:3][:] ); #'
 
-  
-  # for  x = xmax, y = any z = any
-  indFz2 = round(Integer, l*n*(m-1)/2 +  l*(m+1)/2 +(Ind_relative[:,:,1:2])[:]);
-  indC = setdiff(collect(1:N),indFz2);
-  GSampled = sampleG3D(k,X,Y,Z,indFz2, D0)[:,indC ];
-  (U,s,V) = svd(GSampled);
-  
-  push!(Entries,U[:,end]'); #'
-  push!(Indices, (Ind_relative[:,:,1:2])[:]); #'
-
-
-  # for  y = ymin, x = 0
-  indFx1 = round(Integer, (n+1)/2 + [-1,0,1,n,n+1, n-1]);
-  indC = setdiff(collect(1:N),indFx1);
-  GSampled = sampleG3D(k,X,Y,indFx1, D0)[:,indC ];
+  # for  z = zmax, x = any y = any
+  indFzN = round(Integer, changeInd3D(nHalf,mHalf,l,n,m,l) + Ind_relative[:,:,1:2][:] );
+  indC = setdiff(collect(1:N),indFzN);
+  GSampled = sampleG3D(k,X,Y,Z,indFzN, D0)[:,indC ];
   (U,s,V) = svd(GSampled);
   push!(Entries,U[:,end]'); #'
-  push!(Indices,[-1,0,1,n,n+1, n-1]); #'
+  push!(Indices,Ind_relative[:,:,1:2][:] ); #'
 
-  # for  y = ymin, x = 0
-  indFx2 = round(Integer, N - (n+1)/2 + [-1,0,1,-n,-n+1, -n-1]);
-  indC = setdiff(collect(1:N),indFx2);
-  GSampled = sampleG3D(k,X,Y,indFx2, D0)[:,indC ];
-  (U,s,V) = svd(GSampled);
-  push!(Entries,U[:,end]'); #'
-  push!(Indices,[-1,0,1,-n,-n+1, -n-1]); #'
+  # we need to incorporate the vertices
+  indvertex1  = round(Integer, changeInd3D(1,1,lHalf,n,m,l) + subStencil3D(1,1,2,Ind_relative));
+  indvertex2  = round(Integer, changeInd3D(n,1,lHalf,n,m,l) + subStencil3D(3,1,2,Ind_relative));
+  indvertex3  = round(Integer, changeInd3D(1,m,lHalf,n,m,l) + subStencil3D(1,3,2,Ind_relative));
+  indvertex4  = round(Integer, changeInd3D(n,m,lHalf,n,m,l) + subStencil3D(3,3,2,Ind_relative));
+  indvertex5  = round(Integer, changeInd3D(1,mHalf,1,n,m,l) + subStencil3D(1,2,1,Ind_relative));
+  indvertex6  = round(Integer, changeInd3D(n,mHalf,1,n,m,l) + subStencil3D(3,2,1,Ind_relative));
+  indvertex7  = round(Integer, changeInd3D(1,mHalf,l,n,m,l) + subStencil3D(1,2,3,Ind_relative));
+  indvertex8  = round(Integer, changeInd3D(n,mHalf,l,n,m,l) + subStencil3D(3,2,3,Ind_relative));
+  indvertex9  = round(Integer, changeInd3D(nHalf,1,1,n,m,l) + subStencil3D(2,1,1,Ind_relative));
+  indvertex10 = round(Integer, changeInd3D(nHalf,m,1,n,m,l) + subStencil3D(2,3,1,Ind_relative));
+  indvertex11 = round(Integer, changeInd3D(nHalf,1,l,n,m,l) + subStencil3D(2,1,3,Ind_relative));
+  indvertex12 = round(Integer, changeInd3D(nHalf,m,l,n,m,l) + subStencil3D(2,3,3,Ind_relative));
 
-  # For the corners
-  indcorner1 = round(Integer, 1 + [0,1, n,n+1]);
-  indcorner2 = round(Integer, n + [0,-1, n,n-1]);
-  indcorner3 = round(Integer, n*m-n+1 + [0,1, -n,-n+1]);
-  indcorner4 = round(Integer, n*m + [0,-1, -n,-n-1]);
 
-  indC = setdiff(collect(1:N),indcorner1);
-  GSampled = sampleG3D(k,X,Y,indcorner1, D0)[:,indC ];
+  indC = setdiff(collect(1:N),indvertex1);
+  GSampled = sampleG3D(k,X,Y,Z,indvertex1, D0)[:,indC ];
   # computing the sparsifying correction
   (U,s,V) = svd(GSampled);
   push!(Entries,U[:,end]'); #'
-  push!(Indices,[0,1, n,n+1]); #'
+  push!(Indices,subStencil3D(1,1,2,Ind_relative)); #'
+  
+  indC = setdiff(collect(1:N),indvertex2);
+  GSampled = sampleG3D(k,X,Y,Z,indvertex2, D0)[:,indC ];
+  # computing the sparsifying correction
+  (U,s,V) = svd(GSampled);
+  push!(Entries,U[:,end]'); #'
+  push!(Indices,subStencil3D(3,1,2,Ind_relative)); #'
+
+  indC = setdiff(collect(1:N),indvertex3);
+  GSampled = sampleG3D(k,X,Y,Z,indvertex3, D0)[:,indC ];
+  # computing the sparsifying correction
+  (U,s,V) = svd(GSampled);
+  push!(Entries,U[:,end]'); #'
+  push!(Indices,subStencil3D(1,3,2,Ind_relative)); #'
+  
+  indC = setdiff(collect(1:N),indvertex4);
+  GSampled = sampleG3D(k,X,Y,Z,indvertex4, D0)[:,indC ];
+  # computing the sparsifying correction
+  (U,s,V) = svd(GSampled);
+  push!(Entries,U[:,end]'); #'
+  push!(Indices,subStencil3D(3,3,2,Ind_relative)); #'
+  
+  indC = setdiff(collect(1:N),indvertex5);
+  println(indvertex5)
+  GSampled = sampleG3D(k,X,Y,Z,indvertex5, D0)[:,indC ];
+  # computing the sparsifying correction
+  (U,s,V) = svd(GSampled);
+  push!(Entries,U[:,end]'); #'
+  push!(Indices,subStencil3D(1,2,1,Ind_relative)); #'
+
+  indC = setdiff(collect(1:N),indvertex6);
+  GSampled = sampleG3D(k,X,Y,Z,indvertex6, D0)[:,indC ];
+  # computing the sparsifying correction
+  (U,s,V) = svd(GSampled);
+  push!(Entries,U[:,end]'); #'
+  push!(Indices,subStencil3D(3,2,1,Ind_relative)); #'
+
+  indC = setdiff(collect(1:N),indvertex7);
+  GSampled = sampleG3D(k,X,Y,Z,indvertex7, D0)[:,indC ];
+  # computing the sparsifying correction
+  (U,s,V) = svd(GSampled);
+  push!(Entries,U[:,end]'); #'
+  push!(Indices,subStencil3D(1,2,3,Ind_relative)); #'
+
+  indC = setdiff(collect(1:N),indvertex8);
+  GSampled = sampleG3D(k,X,Y,Z,indvertex8, D0)[:,indC ];
+  # computing the sparsifying correction
+  (U,s,V) = svd(GSampled);
+  push!(Entries,U[:,end]'); #'
+  push!(Indices,subStencil3D(3,2,3,Ind_relative)); #'
+
+  indC = setdiff(collect(1:N),indvertex9);
+  GSampled = sampleG3D(k,X,Y,Z,indvertex9, D0)[:,indC ];
+  # computing the sparsifying correction
+  (U,s,V) = svd(GSampled);
+  push!(Entries,U[:,end]'); #'
+  push!(Indices,subStencil3D(2,1,1,Ind_relative)); #'
+
+  indC = setdiff(collect(1:N),indvertex10);
+  GSampled = sampleG3D(k,X,Y,Z,indvertex10, D0)[:,indC ];
+  # computing the sparsifying correction
+  (U,s,V) = svd(GSampled);
+  push!(Entries,U[:,end]'); #'
+  push!(Indices,subStencil3D(2,3,1,Ind_relative)); #'
+
+  indC = setdiff(collect(1:N),indvertex11);
+  GSampled = sampleG3D(k,X,Y,Z,indvertex11, D0)[:,indC ];
+  # computing the sparsifying correction
+  (U,s,V) = svd(GSampled);
+  push!(Entries,U[:,end]'); #'
+  push!(Indices,subStencil3D(2,1,3,Ind_relative)); #'
+
+  indC = setdiff(collect(1:N),indvertex12);
+  GSampled = sampleG3D(k,X,Y,Z,indvertex12, D0)[:,indC ];
+  # computing the sparsifying correction
+  (U,s,V) = svd(GSampled);
+  push!(Entries,U[:,end]'); #'
+  push!(Indices,subStencil3D(2,3,3,Ind_relative)); #'
+
+
+  # Now we incorporate the corner
+  indcorner1 = round(Integer, changeInd3D(1,1,1,n,m,l) + Ind_relative[2:3,2:3,2:3][:]);
+  indcorner2 = round(Integer, changeInd3D(n,1,1,n,m,l) + Ind_relative[1:2,2:3,2:3][:]);
+  indcorner3 = round(Integer, changeInd3D(1,m,1,n,m,l) + Ind_relative[2:3,1:2,2:3][:]);
+  indcorner4 = round(Integer, changeInd3D(n,m,1,n,m,l) + Ind_relative[1:2,1:2,2:3][:]);
+  indcorner5 = round(Integer, changeInd3D(1,1,l,n,m,l) + Ind_relative[2:3,2:3,1:2][:]);
+  indcorner6 = round(Integer, changeInd3D(n,1,l,n,m,l) + Ind_relative[1:2,2:3,1:2][:]);
+  indcorner7 = round(Integer, changeInd3D(1,m,l,n,m,l) + Ind_relative[2:3,1:2,1:2][:]);
+  indcorner8 = round(Integer, changeInd3D(n,m,l,n,m,l) + Ind_relative[1:2,1:2,1:2][:]);
+
+  indC = setdiff(collect(1:N),indcorner1);
+  GSampled = sampleG3D(k,X,Y,Z,indcorner1, D0)[:,indC ];
+  # computing the sparsifying correction
+  (U,s,V) = svd(GSampled);
+  push!(Entries,U[:,end]'); #'
+  push!(Indices,Ind_relative[2:3,2:3,2:3][:]); #'
 
   #'
   indC = setdiff(collect(1:N),indcorner2);
-  GSampled = sampleG3D(k,X,Y,indcorner2, D0)[:,indC ];
+  GSampled = sampleG3D(k,X,Y,Z,indcorner2, D0)[:,indC ];
   # computing the sparsifying correction
   (U,s,V) = svd(GSampled);
   push!(Entries,U[:,end]'); #'
-  push!(Indices,[0,-1, n,n-1]); #'
+  push!(Indices,Ind_relative[1:2,2:3,2:3][:]); #'
 
   #'
   indC = setdiff(collect(1:N),indcorner3);
-  GSampled = sampleG3D(k,X,Y,indcorner3, D0)[:,indC ];
+  GSampled = sampleG3D(k,X,Y,Z,indcorner3, D0)[:,indC ];
   # computing the sparsifying correction
   (U,s,V) = svd(GSampled);
   push!(Entries,U[:,end]'); #'
-  push!(Indices,[0,1, -n,-n+1]); #'
+  push!(Indices,Ind_relative[2:3,1:2,2:3][:]); #'
 
   #'
   indC = setdiff(collect(1:N),indcorner4);
-  GSampled = sampleG3D(k,X,Y,indcorner4, D0)[:,indC ];
+  GSampled = sampleG3D(k,X,Y,Z,indcorner4, D0)[:,indC ];
   # computing the sparsifying correction
   (U,s,V) = svd(GSampled);
   push!(Entries,U[:,end]'); #'
-  push!(Indices,[0,-1, -n,-n-1]); #'
+  push!(Indices,Ind_relative[1:2,1:2,2:3][:]); #'
+
+  indC = setdiff(collect(1:N),indcorner5);
+  GSampled = sampleG3D(k,X,Y,Z,indcorner5, D0)[:,indC ];
+  # computing the sparsifying correction
+  (U,s,V) = svd(GSampled);
+  push!(Entries,U[:,end]'); #'
+  push!(Indices,Ind_relative[2:3,2:3,1:2][:]); #'
+
+  #'
+  indC = setdiff(collect(1:N),indcorner6);
+  GSampled = sampleG3D(k,X,Y,Z,indcorner6, D0)[:,indC ];
+  # computing the sparsifying correction
+  (U,s,V) = svd(GSampled);
+  push!(Entries,U[:,end]'); #'
+  push!(Indices,Ind_relative[1:2,2:3,1:2][:]); #'
+
+  #'
+  indC = setdiff(collect(1:N),indcorner7);
+  GSampled = sampleG3D(k,X,Y,Z,indcorner7, D0)[:,indC ];
+  # computing the sparsifying correction
+  (U,s,V) = svd(GSampled);
+  push!(Entries,U[:,end]'); #'
+  push!(Indices,Ind_relative[2:3,1:2,1:2][:]); #'
+
+  #'
+  indC = setdiff(collect(1:N),indcorner8);
+  GSampled = sampleG3D(k,X,Y,Z,indcorner8, D0)[:,indC ];
+  # computing the sparsifying correction
+  (U,s,V) = svd(GSampled);
+  push!(Entries,U[:,end]'); #'
+  push!(Indices,Ind_relative[1:2,1:2,1:2][:]); #'
 
   return (Indices, Entries)
 end
@@ -703,6 +866,39 @@ function referenceValsTrapRule()
     w = [1-0.892*im, 1-1.35*im, 1-1.79*im, 1- 2.23*im, 1-2.67*im, 1-3.11*im]
     return (x,w)
 end
+
+@inline function changeInd3D(indI::Int64, indJ::Int64, indK::Int64, n::Int64,m::Int64,k::Int64)
+  # function easily compute the global index from dimensional ones
+  # for a third order tensor
+  return (indK-1)*n*m + (indJ-1)*n + indI
+end
+
+@inline function changeInd3D(indI::Array{Int64,1}, indJ::Array{Int64,1}, indK::Array{Int64,1}, n::Int64,m::Int64,k::Int64)
+  # function easily compute the global index from dimensional ones
+  # for a third order tensor
+  return (indK-1)*n*m + (indJ-1)*n + indI
+end
+
+@inline function subStencil3D(indI::Int64, indJ::Int64, indK::Int64, Ind_relative::Array{Int64,3})
+  # function to easily the local substencil for a given set of indices!
+  # for a third order tensor
+  ii = max(indI-1,1):min(indI+1,3)
+  jj = max(indJ-1,1):min(indJ+1,3)
+  kk = max(indK-1,1):min(indK+1,3)
+
+  return Ind_relative[ii,jj,kk][:]
+end
+
+
+
+
+# @inline function indexMatrix(indI::Int64, indJ::Int64, indK::Int64, n::Int64,m::Int64,k::Int64)
+#   # function easily compute the global index from dimensional ones
+#   # for a third order tensor
+
+
+
+# end
 
 
 function buildGConv(x,y,h::Float64,n::Int64,m::Int64,D0,k::Float64)
@@ -904,6 +1100,110 @@ function buildSparseA(k::Float64,X::Array{Float64,1},Y::Array{Float64,1},
     return A;
 end
 
+
+## To be done! (I don't remember how I built this one)
+function buildSparseA3D(k::Float64,X::Array{Float64,1},Y::Array{Float64,1},
+                        Z::Array{Float64,1},
+                        D0::Complex128, n::Int64 ,m::Int64,l::Int64; method::String = "normal")
+# function that build the sparsigying preconditioner
+
+
+    Ind = reshape(collect(1:n*m*l),n,m,l);
+
+    if method == "normal"
+      (Indices, Values) = entriesSparseA(k,X,Y,D0, n ,m);
+    elseif method == "randomized"
+      println("Not implemented yet")
+      (Indices, Values) = entriesSparseARand(k,X,Y,D0, n ,m);
+    end
+
+    # building the indices, columns and rows for the interior
+    (rowA, colA, valA) = createIndices(Ind[2:end-1,2:end-1,2:end-1][:],
+                                    Indices[1][:], Values[1][:]);
+
+   
+    # for  x = xmin,  y = anything z = anything
+    (Row, Col, Val) = createIndices(Ind[1,2:end-1,2:end-1][:],
+                                    Indices[2][:], Values[2][:]);
+
+    rowA = vcat(rowA,Row);
+    colA = vcat(colA,Col);
+    valA = vcat(valA,Val);
+
+    # for  x = xmax,  y = anything z = anything
+    (Row, Col, Val) = createIndices(Ind[end,2:end-1,2:end-1][:],
+                                    Indices[3][:], Values[3][:]);
+
+    rowA = vcat(rowA,Row)
+    colA = vcat(colA,Col)
+    valA = vcat(valA,Val)
+
+    # for  y = ymin,  x = anything z = anything
+    (Row, Col, Val) = createIndices(Ind[2:end-1,1,2:end-1][:],
+                                    Indices[4][:], Values[4][:]);
+
+    rowA = vcat(rowA,Row)
+    colA = vcat(colA,Col)
+    valA = vcat(valA,Val)
+
+    # for  y = ymax,  x = anything z = anything
+    (Row, Col, Val) = createIndices(Ind[2:end-1,end,2:end-1][:],
+                                    Indices[5][:], Values[5][:]);
+
+    rowA = vcat(rowA,Row)
+    colA = vcat(colA,Col)
+    valA = vcat(valA,Val)
+
+    # for  z = zmin,  x = anything y = anything
+    (Row, Col, Val) = createIndices(Ind[2:end-1,2:end-1,1][:],
+                                    Indices[6][:], Values[4][:]);
+
+    rowA = vcat(rowA,Row)
+    colA = vcat(colA,Col)
+    valA = vcat(valA,Val)
+
+    # for  z = zmax,  x = anything y = anything
+    (Row, Col, Val) = createIndices(Ind[2:end-1,2:end-1,end][:],
+                                    Indices[7][:], Values[5][:]);
+
+    rowA = vcat(rowA,Row)
+    colA = vcat(colA,Col)
+    valA = vcat(valA,Val)
+
+    (Row, Col, Val) = createIndices(Ind[1,1],
+                                    Indices[6][:], Values[6][:]);
+
+    rowA = vcat(rowA,Row)
+    colA = vcat(colA,Col)
+    valA = vcat(valA,Val)
+
+    (Row, Col, Val) = createIndices(Ind[end,1],
+                                    Indices[7][:], Values[7][:]);
+
+    rowA = vcat(rowA,Row)
+    colA = vcat(colA,Col)
+    valA = vcat(valA,Val)
+
+    (Row, Col, Val) = createIndices(Ind[1,end],
+                                    Indices[8][:], Values[8][:]);
+
+    rowA = vcat(rowA,Row)
+    colA = vcat(colA,Col)
+    valA = vcat(valA,Val)
+
+    (Row, Col, Val) = createIndices(Ind[end,end],
+                                    Indices[9][:], Values[9][:]);
+
+    rowA = vcat(rowA,Row)
+    colA = vcat(colA,Col)
+    valA = vcat(valA,Val)
+
+
+    A = sparse(rowA,colA,valA);
+
+    return A;
+end
+
 function entriesSparseG(k::Float64,X::Array{Float64,1},Y::Array{Float64,1},
                        D0::Complex128, n::Int64 ,m::Int64)
   # function to compute the entried of G, inside the volume, at the boundaries
@@ -913,10 +1213,15 @@ function entriesSparseG(k::Float64,X::Array{Float64,1},Y::Array{Float64,1},
   @assert mod(length(X),2) == 1
   Entries  = Array{Complex128}[]
 
+  IndRelative = zeros(Int64,3,3)
+  IndRelative = [-n-1 -n -n+1;
+                   -1  0    1;
+                  n-1  n  n+1]
+
   N = n*m;
 
   # computing the entries for the interior
-  indVol = round(Integer, n*(m-1)/2 + (n+1)/2 + [-1,0,1,n,n-1,n+1,-n,-n-1, -n+1]);
+  indVol = round(Integer, n*(m-1)/2 + (n+1)/2 + IndRelative[:] );
   GSampled = sampleG(k,X,Y,indVol, D0)[:,indVol];
 
   push!(Entries,GSampled);
@@ -928,7 +1233,7 @@ function entriesSparseG(k::Float64,X::Array{Float64,1},Y::Array{Float64,1},
   push!(Entries,GSampled);
 
   # for  x = xmax, y = 0
-  indFz2 = round(Integer, n*(n-1)/2 + [-1,0,n,n-1,-n, -n-1]);
+  indFz2 = round(Integer, n*(m-1)/2 + [-1,0,n,n-1,-n, -n-1]);
   GSampled = sampleG(k,X,Y,indFz2, D0)[:,indFz2];
 
   push!(Entries,GSampled);
