@@ -52,7 +52,7 @@ figure(5); clf(); imshow(real(NU[:,:,15]))
 fastconv = buildFastConvolution3D(x,y,z,X,Y,Z,h,k,nu, quadRule = "Greengard_Vico");
 
 # # assembling the sparsifiying preconditioner
-# As = buildSparseA(k,X,Y,D0, n ,m);
+ As = buildSparseA3D(k,X,Y,Z,D0, n ,m, l);
 
 # # assembling As*( I + k^2G*nu)
 # Mapproxsp = As + k^2*(buildSparseAG(k,X,Y,D0, n ,m)*spdiagm(nu(X,Y)));

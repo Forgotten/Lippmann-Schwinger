@@ -43,7 +43,7 @@ window(y,alpha, beta) = 1*(abs(y).<=beta) + (abs(y).>beta).*(abs(y).<alpha).*exp
 xHet = 0.1;
 yHet = 0.1;
 # Defining the smooth perturbation of the slowness
-nu(x,y) = -0.5*exp( -1/(2*sigma^2)*((x-xHet).^2 + (y-yHet).^2) ).*window(sqrt((x-xHet).^2 + (y-yHet).^2), 0.3,0.4  );
+nu(x,y) = -0.5*exp( -1/(2*sigma^2)*((x-xHet).^2 + (y-yHet).^2) ).*window(sqrt((x-xHet).^2 + (y-yHet).^2), 0.3,0.38  );
 
 figure(1);clf();
 imshow(reshape(sqrt(1 - nu(X,Y)), n,m),extent=[y[1], y[end], x[end], x[1]]);cb =  colorbar();
