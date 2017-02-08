@@ -288,7 +288,7 @@ function buildFastConvolution3D(x,y,z,X,Y,Z,h,k,nu; quadRule::String = "Greengar
 
         # S = sqrt(KX.^2 + KY.^2 + KZ.^2);
         ## S  = [ sqrt(kx[i]^2 + ky[j]^2 + kz[p]^2) for i=1:4*n, j=1:4*m, p=1:4*l ]
-        
+
         # GFFT = Gtruncated3D(L, k, S)
 
         ### GFFT = [ Gtruncated3D(L,k,sqrt(kx[i]^2 + ky[j]^2 + kz[p]^2)) for i=1:4*n, j=1:4*m, p=1:4*l]
@@ -371,6 +371,15 @@ end
 end
 
 @everywhere function sampleG3D(k,X,Y,Z, indS, D0)
+  # function to sample the 3D Green's function in the nodes given by indS
+  # input:    k: float64 frequency
+  #           X: mesh contaning the X position of each point
+  #           Y: mesh contaning the Y position of each point
+  #           Z: mesh contaning the Y position of each point
+  #           indS: indices in which the sources are located
+  #           D0: diagonal modification based on the kh, this is given as a
+  #               parameter but it should be correctly handled in newer versions
+  #               of the code.
   # function to sample the Green's function at frequency k
 
   R  = SharedArray(Float64, length(indS), length(X))
@@ -386,6 +395,7 @@ end
     end
   end
 
+  # sampling the Green's function in the given points
     Gc = (exp(1im*k*R)*h^2)./(4*pi*R) ;
     for i = 1:length(indS)
         ii = indS[i]
@@ -474,14 +484,14 @@ end
 # little convenience wrapper
 @everywhere sampleGkernel_shared_chunk!(q,u,k,h) = sampleGkernel_chunk!(q,u,k,h, myrange(q)...)
 
-@everywhere @inline function sampleGkernel_chunk!(G, R,k::Float64,h::Float64, 
+@everywhere @inline function sampleGkernel_chunk!(G, R,k::Float64,h::Float64,
                                                   irange::UnitRange{Int64}, jrange::UnitRange{Int64})
     #@show (irange, jrange)  # display so we can see what's happening
     # println(myid())
     # println(typeof(irange))
     alpha = 1im/4*h^2
     for i in irange
-      for j in jrange 
+      for j in jrange
         @inbounds G[i,j] = alpha*hankelh1(0, k*R[i,j]);
       end
     end
@@ -503,7 +513,7 @@ function entriesSparseA(k,X,Y,D0, n ,m)
   # computing the entries for the interior
   # extracting indices at the center of the stencil
   indVol = round(Integer, n*(m-1)/2 + (n+1)/2 + IndRelative[:] );
-  # extracting only the far field indices 
+  # extracting only the far field indices
   indVolC = setdiff(collect(1:N),indVol);
   GSampled = sampleG(k,X,Y,indVol, D0)[:,indVolC];
 
@@ -512,7 +522,7 @@ function entriesSparseA(k,X,Y,D0, n ,m)
   push!(Entries,U[:,end]'); #'
   push!(Indices,IndRelative[:]);
 
-  # this is for the edges 
+  # this is for the edges
 
   # for  x = xmin, y = 0
   indFz1 = round(Integer, n*(m-1)/2 +1 + IndRelative[:,2:3][:]);
@@ -588,7 +598,7 @@ end
 
 
 function entriesSparseA3D(k,X,Y,Z,D0, n ,m, l)
-  # in this case we need to build everythig with ranodmized methods 
+  # in this case we need to build everythig with ranodmized methods
   # we need to have an odd number of points
   #@assert mod(length(X),2) == 1
   Entries  = Array{Complex128}[]
@@ -601,13 +611,13 @@ function entriesSparseA3D(k,X,Y,Z,D0, n ,m, l)
                          (-m*n  -1) (-m*n  ) (-m*n  +1);
                          (-m*n+n-1) (-m*n+n) (-m*n+n+1) ]';
 
-  Ind_relative[:,:,2] = [-n-1 -n -n+1; 
+  Ind_relative[:,:,2] = [-n-1 -n -n+1;
                            -1  0    1;
-                          n-1  n  n+1]'; 
+                          n-1  n  n+1]';
 
   Ind_relative[:,:,3] = [(m*n-n-1) (m*n-n) (m*n-n+1);
                          (m*n  -1) (m*n  ) (m*n  +1);
-                         (m*n+n-1) (m*n+n) (m*n+n+1) ]';                        
+                         (m*n+n-1) (m*n+n) (m*n+n+1) ]';
 
   # computing the entries for the interior
 
@@ -616,7 +626,7 @@ function entriesSparseA3D(k,X,Y,Z,D0, n ,m, l)
   lHalf = round(Integer,l/2);
 
   indVol = round(Integer, changeInd3D(nHalf,mHalf,lHalf,n,m,l)+Ind_relative[:]);
-  
+
   indVolC = setdiff(collect(1:N),indVol);
   GSampled = sampleG3D(k,X,Y,Z,indVol, D0)[:,indVolC ];
 
@@ -624,7 +634,7 @@ function entriesSparseA3D(k,X,Y,Z,D0, n ,m, l)
   (U,s,V) = svd(GSampled);
   push!(Entries,U[:,end]'); #'
   push!(Indices,Ind_relative);
-  
+
 
   # for  x = xmin,  y = anything z = anything
   indFx1 = round(Integer, changeInd3D(1,mHalf,lHalf,n,m,l) + Ind_relative[2:3,:,:][:] );
@@ -636,7 +646,7 @@ function entriesSparseA3D(k,X,Y,Z,D0, n ,m, l)
   push!(Entries,U[:,end]'); #'
   push!(Indices,Ind_relative[2:3,:,:][:] );#'
 
-  
+
   # for  x = xmax, y = any z = any
   indFxN = round(Integer, changeInd3D(n,mHalf,lHalf,n,m,l) + Ind_relative[1:2,:,:][:]);
   indC = setdiff(collect(1:N),indFxN);
@@ -702,7 +712,7 @@ function entriesSparseA3D(k,X,Y,Z,D0, n ,m, l)
   (U,s,V) = svd(GSampled);
   push!(Entries,U[:,end]'); #'
   push!(Indices,subStencil3D(1,1,2,Ind_relative)); #'
-  
+
   indC = setdiff(collect(1:N),indvertex2);
   GSampled = sampleG3D(k,X,Y,Z,indvertex2, D0)[:,indC ];
   # computing the sparsifying correction
@@ -716,14 +726,14 @@ function entriesSparseA3D(k,X,Y,Z,D0, n ,m, l)
   (U,s,V) = svd(GSampled);
   push!(Entries,U[:,end]'); #'
   push!(Indices,subStencil3D(1,3,2,Ind_relative)); #'
-  
+
   indC = setdiff(collect(1:N),indvertex4);
   GSampled = sampleG3D(k,X,Y,Z,indvertex4, D0)[:,indC ];
   # computing the sparsifying correction
   (U,s,V) = svd(GSampled);
   push!(Entries,U[:,end]'); #'
   push!(Indices,subStencil3D(3,3,2,Ind_relative)); #'
-  
+
   indC = setdiff(collect(1:N),indvertex5);
   println(indvertex5)
   GSampled = sampleG3D(k,X,Y,Z,indvertex5, D0)[:,indC ];
@@ -782,7 +792,7 @@ function entriesSparseA3D(k,X,Y,Z,D0, n ,m, l)
   push!(Indices,subStencil3D(2,3,3,Ind_relative)); #'
 
 
-  # Now we incorporate the corner
+  # Now we incorporate the corners
   indcorner1 = round(Integer, changeInd3D(1,1,1,n,m,l) + Ind_relative[2:3,2:3,2:3][:]);
   indcorner2 = round(Integer, changeInd3D(n,1,1,n,m,l) + Ind_relative[1:2,2:3,2:3][:]);
   indcorner3 = round(Integer, changeInd3D(1,m,1,n,m,l) + Ind_relative[2:3,1:2,2:3][:]);
@@ -1121,7 +1131,7 @@ function buildSparseA3D(k::Float64,X::Array{Float64,1},Y::Array{Float64,1},
     (rowA, colA, valA) = createIndices(Ind[2:end-1,2:end-1,2:end-1][:],
                                     Indices[1][:], Values[1][:]);
 
-   
+
     # for  x = xmin,  y = anything z = anything
     (Row, Col, Val) = createIndices(Ind[1,2:end-1,2:end-1][:],
                                     Indices[2][:], Values[2][:]);
@@ -1286,7 +1296,7 @@ function buildSparseAG(k::Float64,X::Array{Float64,1},Y::Array{Float64,1},
 
     if method=="normal"
       (Indices, Values) = entriesSparseA(k,X,Y,D0, n ,m);
-    elseif method == "randomized" 
+    elseif method == "randomized"
       (Indices, Values) = entriesSparseARand(k,X,Y,D0, n ,m);
     end
 
@@ -1367,7 +1377,7 @@ function buildSparseAG(k::Float64,X::Array{Float64,1},Y::Array{Float64,1},
 end
 
 ######################## Randomized methods ##############################
-######not working 
+######not working
 
 # function entriesSparseARand(k,X,Y,D0, n ,m)
 #   # we need to have an even number of points

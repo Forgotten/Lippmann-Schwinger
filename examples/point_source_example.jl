@@ -18,7 +18,7 @@ BLAS.set_num_threads(4);
 
 
 #Defining Omega
-h = 0.005
+h = 0.001
 k = 1/(h)
 
 # size of box
@@ -35,11 +35,22 @@ Y = repmat(y', n,1)[:]
 (ppw,D) = referenceValsTrapRule();
 D0 = D[1];
 
+xs = -0.4; ys = -0.4;                     # point source location
+sigma = 0.15;
+
+window(y,alpha, beta) = 1*(abs(y).<=beta) + (abs(y).>beta).*(abs(y).<alpha).*exp(2*exp(-(alpha- beta)./(abs(y)-beta))./ ((abs(y)-beta)./(alpha- beta)-1) ) 
+
+xHet = 0.1;
+yHet = 0.1;
 # Defining the smooth perturbation of the slowness
-nu(x,y) = 0.3*exp(-40*(x.^2 + y.^2)).*(abs(x).<0.48).*(abs(y).<0.48);
+nu(x,y) = -0.5*exp( -1/(2*sigma^2)*((x-xHet).^2 + (y-yHet).^2) ).*window(sqrt((x-xHet).^2 + (y-yHet).^2), 0.3,0.4  );
+
+figure(1);clf();
+imshow(reshape(sqrt(1 - nu(X,Y)), n,m),extent=[y[1], y[end], x[end], x[1]]);cb =  colorbar();
+
 
 ## You can choose between Duan Rohklin trapezoidal quadrature
-# fastconv = buildFastConvolution(x,y,h,k,nu)
+#fastconv = buildFastConvolution(x,y,h,k,nu)
 
 # or Greengard Vico Quadrature (this is not optimized and is 2-3 times slower)
 fastconv = buildFastConvolution(x,y,h,k,nu, quadRule = "Greengard_Vico");
@@ -54,8 +65,8 @@ fastconv = buildFastConvolution(x,y,h,k,nu, quadRule = "Greengard_Vico");
 precond = SparsifyingPreconditioner(Mapproxsp, As)
 
 # building the RHS from the incident field
-u_inc = exp(k*im*X);
-rhs = -(fastconv*u_inc - u_inc);
+u_inc = 1im/4*hankelh1(0, k*sqrt((X-xs).^2 + (Y-ys).^2)+eps(1.0));
+rhs = -k^2*FFTconvolution(fastconv, nu(X,Y).*u_inc) ;
 #rhs = u_inc;
 
 # allocating the solution
@@ -68,4 +79,4 @@ println(info[2].residuals[:])
 # plotting the solution
 figure(1)
 clf()
-imshow(real(reshape(u+u_inc,n,m)))
+imshow(imag(reshape(u+u_inc,n,m)))
