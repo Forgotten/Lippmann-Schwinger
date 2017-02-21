@@ -5,6 +5,7 @@
 include("Functions.jl")
 
 type FastM3D
+    ## we may want to add an FFT plan to make the evaluation faster 
     # type to encapsulate the fast application of M = I + omega^2G*spadiagm(nu)
     GFFT :: Array{Complex128,3}
     nu :: Array{Float64,1}
@@ -116,7 +117,7 @@ end
       # Allocate the space for the extended B
       BExt = zeros(Complex128,M.ne, M.me);
       # Apply spadiagm(nu) and ented by zeros
-      BExt[1:M.n,1:M.n]= reshape(M.nu.*b,M.n,M.m) ;
+      BExt[1:M.n,1:M.m]= reshape(M.nu.*b,M.n,M.m) ;
 
       # Fourier Transform
       BFft = fftshift(fft(BExt))
@@ -146,7 +147,7 @@ end
       # Allocate the space for the extended B
       BExt = zeros(Complex128,M.ne, M.ne);
       # Apply spadiagm(nu) and ented by zeros
-      BExt[1:M.n,1:M.n]= reshape(b,M.n,M.n) ;
+      BExt[1:M.n,1:M.m]= reshape(M.nu.*b,M.n,M.m) ;
 
       # Fourier Transform
       BFft = fft(BExt)
@@ -176,13 +177,11 @@ end
 
       # multiplication by omega^2
       B = (BExt[1:M.n, 1:M.n]);
-
     end
     return  B[:]
 end
 
-
-# #this is the sequantial version for sampling G
+# # #this is the sequantial version for sampling G
 # function sampleG(k,X,Y,indS, D0)
 #     # function to sample the Green's function at frequency k
 #     Gc = zeros(Complex128, length(indS), length(X))
@@ -349,6 +348,8 @@ end
   #   end
   # end
 
+  h = abs(X[2] - X[1])
+
   R  = SharedArray(Float64, length(indS), length(X))
   Xshared = convert(SharedArray, X)
   Yshared = convert(SharedArray, Y)
@@ -366,6 +367,65 @@ end
     for i = 1:length(indS)
         ii = indS[i]
         Gc[i,ii]= 1im/4*D0*h^2;
+    end
+    return Gc
+end
+
+
+function sampleGConv(k,X,Y,indS, fastconv::FastM)
+    # function to sample the Green's function at frequency k
+    # using convolution 
+
+  #   R  = SharedArray(Float64, length(indS), length(X))
+  #   Xshared = SharedArray(X)
+  #   Yshared = SharedArray(Y)
+  #   @sync begin
+  #     @parallel for i = 1:length(indS)
+  #   #for i = 1:length(indS)
+  #     ii = indS[i]
+  #     R[i,:]  = sqrt( (X-X[ii]).^2 + (Y-Y[ii]).^2);
+  #     R[i,ii] = 1;
+  #   end
+  # end
+
+  R  = zeros(Complex128, length(indS), length(X))
+   for i = 1:length(indS)
+      #for i = 1:length(indS)
+      ii = indS[i]
+      R[i,ii] = 1;
+    end
+
+   Gc =  zeros(Complex128, length(indS), length(X))
+    for i = 1:length(indS)
+        Gc[i,:]= FFTconvolution(fastconv, R[i,:][:])
+    end
+    return Gc
+end
+
+
+
+@everywhere function sampleG3D(k,X,Y,Z, indS, fastconv::FastM3D)
+  # function to sample the 3D Green's function in the nodes given by indS
+  # input:    k: float64 frequency
+  #           X: mesh contaning the X position of each point
+  #           Y: mesh contaning the Y position of each point
+  #           Z: mesh contaning the Y position of each point
+  #           indS: indices in which the sources are located
+  #           fastconv: FastM3D type for the application of the 
+  #                     discrete convolution kernel
+
+  R  = zeros(Complex128, length(indS), length(X))
+   for i = 1:length(indS)
+      #for i = 1:length(indS)
+      ii = indS[i]
+      R[i,ii] = 1;
+    end
+
+   Gc =  zeros(Complex128, length(indS), length(X))
+   # this can be parallelized but then, we may have cache 
+   # aceess problem 
+    for i = 1:length(indS)
+        Gc[i,:]= FFTconvolution(fastconv, R[i,:][:])
     end
     return Gc
 end
@@ -596,6 +656,105 @@ function entriesSparseA(k,X,Y,D0, n ,m)
   return (Indices, Entries)
 end
 
+function entriesSparseAConv(k,X,Y,fastconv::FastM, n ,m)
+  # we need to have an even number of points
+  @assert mod(length(X),2) == 1
+  Entries  = Array{Complex128}[]
+  Indices  = Array{Int64}[]
+
+  IndRelative = zeros(Int64,3,3)
+  IndRelative = [-n-1 -n -n+1;
+                   -1  0    1;
+                  n-1  n  n+1]
+
+  N = n*m;
+
+  # computing the entries for the interior
+  # extracting indices at the center of the stencil
+  indVol = round(Integer, n*(m-1)/2 + (n+1)/2 + IndRelative[:] );
+  # extracting only the far field indices
+  indVolC = setdiff(collect(1:N),indVol);
+  GSampled = sampleGConv(k,X,Y,indVol, fastconv)[:,indVolC];
+
+  # computing the sparsifying correction
+  (U,s,V) = svd(GSampled);
+  push!(Entries,U[:,end]'); #'
+  push!(Indices,IndRelative[:]);
+
+  # this is for the edges
+
+  # for  x = xmin, y = 0
+  indFz1 = round(Integer, n*(m-1)/2 +1 + IndRelative[:,2:3][:]);
+  indC = setdiff(collect(1:N),indFz1);
+  GSampled = sampleGConv(k,X,Y,indFz1, fastconv)[:,indC ];
+  (U,s,V) = svd(GSampled);
+  push!(Entries,U[:,end]'); #'
+  push!(Indices, IndRelative[:,2:3][:]); #'
+
+  # for  x = xmax, y = 0
+  indFz2 = round(Integer, n*(m-1)/2 + IndRelative[:,1:2][:]);
+  indC = setdiff(collect(1:N),indFz2);
+  GSampled = sampleGConv(k,X,Y,indFz2, fastconv)[:,indC ];
+  (U,s,V) = svd(GSampled);
+  push!(Entries,U[:,end]'); #'
+  push!(Indices,IndRelative[:,1:2][:]); #'
+
+  # for  y = ymin, x = 0
+  indFx1 = round(Integer, (n+1)/2 + IndRelative[2:3,:][:]);
+  indC = setdiff(collect(1:N),indFx1);
+  GSampled = sampleGConv(k,X,Y,indFx1, fastconv)[:,indC ];
+  (U,s,V) = svd(GSampled);
+  push!(Entries,U[:,end]'); #'
+  push!(Indices, IndRelative[2:3,:][:]); #'
+
+  # for  y = ymin, x = 0
+  indFx2 = round(Integer, N - (n+1)/2 + IndRelative[1:2,:][:]);
+  indC = setdiff(collect(1:N),indFx2);
+  GSampled = sampleGConv(k,X,Y,indFx2, fastconv)[:,indC ];
+  (U,s,V) = svd(GSampled);
+  push!(Entries,U[:,end]'); #'
+  push!(Indices,IndRelative[1:2,:][:]); #'
+
+  # For the corners
+  indcorner1 = round(Integer, 1       + IndRelative[2:3,2:3][:]);
+  indcorner2 = round(Integer, n       + IndRelative[2:3,1:2][:]);
+  indcorner3 = round(Integer, n*m-n+1 + [0, 1,-n,-n+1]);
+  indcorner4 = round(Integer, n*m     + [0,-1,-n,-n-1]);
+
+  indC = setdiff(collect(1:N),indcorner1);
+  GSampled = sampleGConv(k,X,Y,indcorner1, fastconv)[:,indC ];
+  # computing the sparsifying correction
+  (U,s,V) = svd(GSampled);
+  push!(Entries,U[:,end]'); #'
+  push!(Indices, IndRelative[2:3,2:3][:]); #'
+
+  #'
+  indC = setdiff(collect(1:N),indcorner2);
+  GSampled = sampleGConv(k,X,Y,indcorner2, fastconv)[:,indC ];
+  # computing the sparsifying correction
+  (U,s,V) = svd(GSampled);
+  push!(Entries, U[:,end]'); #'
+  push!(Indices, IndRelative[2:3,1:2][:]); #'
+
+  #'
+  indC = setdiff(collect(1:N),indcorner3);
+  GSampled = sampleGConv(k,X,Y,indcorner3, fastconv)[:,indC ];
+  # computing the sparsifying correction
+  (U,s,V) = svd(GSampled);
+  push!(Entries,U[:,end]'); #'
+  push!(Indices,[0,1, -n,-n+1]); #'
+
+  #'
+  indC = setdiff(collect(1:N),indcorner4);
+  GSampled = sampleGConv(k,X,Y,indcorner4, fastconv)[:,indC ];
+  # computing the sparsifying correction
+  (U,s,V) = svd(GSampled);
+  push!(Entries,U[:,end]'); #'
+  push!(Indices,[0,-1, -n,-n-1]); #'
+
+  return (Indices, Entries)
+end
+
 
 function entriesSparseA3D(k,X,Y,Z,D0, n ,m, l)
   # in this case we need to build everythig with ranodmized methods
@@ -736,7 +895,6 @@ function entriesSparseA3D(k,X,Y,Z,D0, n ,m, l)
   push!(Indices,subStencil3D(1,1,2,Ind_relative)); #'
 
   indC = setdiff(collect(1:N),indvertex5);
-  println(indvertex5)
   GSampled = sampleG3D(k,X,Y,Z,indvertex5, D0)[:,indC ];
   # computing the sparsifying correction
   (U,s,V) = svd(GSampled);
@@ -1112,6 +1270,88 @@ function buildSparseA(k::Float64,X::Array{Float64,1},Y::Array{Float64,1},
 end
 
 
+
+function buildSparseAConv(k::Float64,X::Array{Float64,1},Y::Array{Float64,1},
+                          fastconv::FastM, n::Int64 ,m::Int64; method::String = "normal")
+# function that build the sparsigying preconditioner
+
+
+    Ind = reshape(collect(1:n*m),n,m);
+
+    if method == "normal"
+      (Indices, Values) = entriesSparseAConv(k,X,Y,fastconv, n ,m);
+    elseif method == "randomized"
+      (Indices, Values) = entriesSparseARand(k,X,Y,D0, n ,m);
+    end
+
+
+    (rowA, colA, valA) = createIndices(Ind[2:end-1,2:end-1][:],
+                                       Indices[1][:], Values[1][:]);
+
+    (Row, Col, Val) = createIndices(Ind[1,2:end-1][:],
+                                    Indices[2][:], Values[2][:]);
+
+    rowA = vcat(rowA,Row);
+    colA = vcat(colA,Col);
+    valA = vcat(valA,Val);
+
+
+    (Row, Col, Val) = createIndices(Ind[end,2:end-1][:],
+                                    Indices[3][:], Values[3][:]);
+
+    rowA = vcat(rowA,Row)
+    colA = vcat(colA,Col)
+    valA = vcat(valA,Val)
+
+    (Row, Col, Val) = createIndices(Ind[2:end-1,1][:],
+                                    Indices[4][:], Values[4][:]);
+
+    rowA = vcat(rowA,Row)
+    colA = vcat(colA,Col)
+    valA = vcat(valA,Val)
+
+    (Row, Col, Val) = createIndices(Ind[2:end-1,end][:],
+                                    Indices[5][:], Values[5][:]);
+
+    rowA = vcat(rowA,Row)
+    colA = vcat(colA,Col)
+    valA = vcat(valA,Val)
+
+    (Row, Col, Val) = createIndices(Ind[1,1],
+                                    Indices[6][:], Values[6][:]);
+
+    rowA = vcat(rowA,Row)
+    colA = vcat(colA,Col)
+    valA = vcat(valA,Val)
+
+    (Row, Col, Val) = createIndices(Ind[end,1],
+                                    Indices[7][:], Values[7][:]);
+
+    rowA = vcat(rowA,Row)
+    colA = vcat(colA,Col)
+    valA = vcat(valA,Val)
+
+    (Row, Col, Val) = createIndices(Ind[1,end],
+                                    Indices[8][:], Values[8][:]);
+
+    rowA = vcat(rowA,Row)
+    colA = vcat(colA,Col)
+    valA = vcat(valA,Val)
+
+    (Row, Col, Val) = createIndices(Ind[end,end],
+                                    Indices[9][:], Values[9][:]);
+
+    rowA = vcat(rowA,Row)
+    colA = vcat(colA,Col)
+    valA = vcat(valA,Val)
+
+
+    A = sparse(rowA,colA,valA);
+
+    return A;
+end
+
+
 ## To be done! (I don't remember how I built this one)
 function buildSparseA3D(k::Float64,X::Array{Float64,1},Y::Array{Float64,1},
                         Z::Array{Float64,1},
@@ -1127,14 +1367,6 @@ function buildSparseA3D(k::Float64,X::Array{Float64,1},Y::Array{Float64,1},
       println("Not implemented yet")
       (Indices, Values) = entriesSparseARand(k,X,Y,D0, n ,m);
     end
-
-# for  x = xmin,  y = anything z = anything
-# for  x = xmax, y = any z = any
-
-# for  y = ymin, x = any z = any
-# for  y = ymax, x = any z = any
-# for  z = zmin, x = any y = any
-# for  z = zmax, x = any y = any
 
     # building the indices, columns and rows for the interior
     (rowA, colA, valA) = createIndices(Ind[2:end-1,2:end-1,2:end-1][:],
@@ -1188,10 +1420,6 @@ function buildSparseA3D(k::Float64,X::Array{Float64,1},Y::Array{Float64,1},
     rowA = vcat(rowA,Row)
     colA = vcat(colA,Col)
     valA = vcat(valA,Val)
-
-
-
-
 
 # we need to incorporate the vertices
 
@@ -1371,7 +1599,7 @@ function buildSparseA3D(k::Float64,X::Array{Float64,1},Y::Array{Float64,1},
 end
 
 function entriesSparseG(k::Float64,X::Array{Float64,1},Y::Array{Float64,1},
-                       D0::Complex128, n::Int64 ,m::Int64)
+                        D0::Complex128, n::Int64 ,m::Int64)
   # function to compute the entried of G, inside the volume, at the boundaries
   # and at the corners. This allows us to compute A*G in O(n) time instead of
   # O(n^2)
@@ -1437,6 +1665,79 @@ function entriesSparseG(k::Float64,X::Array{Float64,1},Y::Array{Float64,1},
 
   #'
   GSampled = sampleG(k,X,Y,indcorner4, D0)[:,indcorner4];
+  push!(Entries,GSampled);
+
+  return Entries
+end
+
+
+function entriesSparseGConv(k::Float64,X::Array{Float64,1},Y::Array{Float64,1},
+                       fastconv::FastM, n::Int64 ,m::Int64)
+  # function to compute the entried of G, inside the volume, at the boundaries
+  # and at the corners. This allows us to compute A*G in O(n) time instead of
+  # O(n^2)
+  # we need to have an even number of points
+  @assert mod(length(X),2) == 1
+  Entries  = Array{Complex128}[]
+
+  IndRelative = zeros(Int64,3,3)
+  IndRelative = [-n-1 -n -n+1;
+                   -1  0    1;
+                  n-1  n  n+1]
+
+  N = n*m;
+
+  # computing the entries for the interior
+  indVol = round(Integer, n*(m-1)/2 + (n+1)/2 + IndRelative[:] );
+  GSampled = sampleGConv(k,X,Y,indVol, fastconv)[:,indVol];
+
+  push!(Entries,GSampled);
+
+  # for  x = xmin, y = 0
+  indFz1 = round(Integer, n*(m-1)/2 +1 + [0,1,n,n+1,-n, -n+1]);
+  GSampled = sampleGConv(k,X,Y,indFz1, fastconv)[:,indFz1];
+
+  push!(Entries,GSampled);
+
+  # for  x = xmax, y = 0
+  indFz2 = round(Integer, n*(m-1)/2 + [-1,0,n,n-1,-n, -n-1]);
+  GSampled = sampleGConv(k,X,Y,indFz2, fastconv)[:,indFz2];
+
+  push!(Entries,GSampled);
+
+  # for  y = ymin, x = 0
+  indFx1 = round(Integer, (n+1)/2 + [-1,0,1,n,n+1, n-1]);
+  GSampled = sampleGConv(k,X,Y,indFx1, fastconv)[:,indFx1];
+
+  push!(Entries,GSampled);
+
+
+  # for  y = ymin, x = 0
+  indFx2 = round(Integer, N - (n+1)/2 + [-1,0,1,-n,-n+1, -n-1]);
+  GSampled = sampleGConv(k,X,Y,indFx2, fastconv)[:,indFx2];
+
+  push!(Entries,GSampled);
+
+  # For the corners
+  indcorner1 = round(Integer, 1 + [0,1, n,n+1]);
+  indcorner2 = round(Integer, n + [0,-1, n,n-1]);
+  indcorner3 = round(Integer, n*m-n+1 + [0,1, -n,-n+1]);
+  indcorner4 = round(Integer, n*m + [0,-1, -n,-n-1]);
+
+  GSampled = sampleGConv(k,X,Y,indcorner1, fastconv)[:,indcorner1];
+  push!(Entries,GSampled);
+
+
+  #'
+  GSampled = sampleGConv(k,X,Y,indcorner2, fastconv)[:,indcorner2];
+  push!(Entries,GSampled);
+
+  #'
+  GSampled = sampleGConv(k,X,Y,indcorner3, fastconv)[:,indcorner3];
+  push!(Entries,GSampled);
+
+  #'
+  GSampled = sampleGConv(k,X,Y,indcorner4, fastconv)[:,indcorner4];
   push!(Entries,GSampled);
 
   return Entries
@@ -1704,8 +2005,100 @@ function buildSparseAG(k::Float64,X::Array{Float64,1},Y::Array{Float64,1},
 end
 
 
+function buildSparseAGConv( k::Float64,X::Array{Float64,1},Y::Array{Float64,1},
+                            fastconv::FastM, n::Int64 ,m::Int64; 
+                            method::String = "normal")
+# function that build the sparsigying preconditioner
+
+
+    Ind = reshape(collect(1:n*m),n,m);
+
+    if method=="normal"
+      (Indices, Values) = entriesSparseAConv(k,X,Y,fastconv, n ,m);
+    elseif method == "randomized"
+      (Indices, Values) = entriesSparseARand(k,X,Y,fastconv, n ,m);
+    end
+
+    Entries = entriesSparseGConv(k,X,Y,fastconv, n ,m);
+
+    ValuesAG = Values[1]*Entries[1];
+    (rowA, colA, valA) = createIndices(Ind[2:end-1,2:end-1][:],
+                                    Indices[1][:], ValuesAG[:]);
+
+    ValuesAG = Values[2]*Entries[2];
+    (Row, Col, Val) = createIndices(Ind[1,2:end-1][:],
+                                    Indices[2][:], ValuesAG[:]);
+
+    rowA = vcat(rowA,Row);
+    colA = vcat(colA,Col);
+    valA = vcat(valA,Val);
+
+    ValuesAG = Values[3]*Entries[3];
+    (Row, Col, Val) = createIndices(Ind[end,2:end-1][:],
+                                    Indices[3][:], ValuesAG[:]);
+
+    rowA = vcat(rowA,Row)
+    colA = vcat(colA,Col)
+    valA = vcat(valA,Val)
+
+    ValuesAG = Values[4]*Entries[4];
+    (Row, Col, Val) = createIndices(Ind[2:end-1,1][:],
+                                    Indices[4][:], ValuesAG[:]);
+
+    rowA = vcat(rowA,Row)
+    colA = vcat(colA,Col)
+    valA = vcat(valA,Val)
+
+    ValuesAG = Values[5]*Entries[5];
+    (Row, Col, Val) = createIndices(Ind[2:end-1,end][:],
+                                    Indices[5][:], ValuesAG[:]);
+
+    rowA = vcat(rowA,Row)
+    colA = vcat(colA,Col)
+    valA = vcat(valA,Val)
+
+    ValuesAG = Values[6]*Entries[6];
+    (Row, Col, Val) = createIndices(Ind[1,1],
+                                    Indices[6][:], ValuesAG[:]);
+
+    rowA = vcat(rowA,Row)
+    colA = vcat(colA,Col)
+    valA = vcat(valA,Val)
+
+    ValuesAG = Values[7]*Entries[7];
+    (Row, Col, Val) = createIndices(Ind[end,1],
+                                    Indices[7][:], ValuesAG[:]);
+
+    rowA = vcat(rowA,Row)
+    colA = vcat(colA,Col)
+    valA = vcat(valA,Val)
+
+    ValuesAG = Values[8]*Entries[8];
+    (Row, Col, Val) = createIndices(Ind[1,end],
+                                    Indices[8][:], ValuesAG[:]);
+
+    rowA = vcat(rowA,Row)
+    colA = vcat(colA,Col)
+    valA = vcat(valA,Val)
+
+    ValuesAG = Values[9]*Entries[9];
+    (Row, Col, Val) = createIndices(Ind[end,end],
+                                    Indices[9][:], ValuesAG[:]);
+
+    rowA = vcat(rowA,Row)
+    colA = vcat(colA,Col)
+    valA = vcat(valA,Val)
+
+
+    AG = sparse(rowA,colA,valA);
+
+    return AG;
+end
+
+
 function buildSparseAG3D(k::Float64,X::Array{Float64,1},Y::Array{Float64,1},
-                       D0::Complex128, n::Int64 ,m::Int64; method::String = "normal")
+                          Z::Array{Float64,1},
+                          D0::Complex128, n::Int64 ,m::Int64,l::Int64; method::String = "normal")
 # function that build the sparsigying preconditioner
 
 
@@ -1794,7 +2187,7 @@ function buildSparseAG3D(k::Float64,X::Array{Float64,1},Y::Array{Float64,1},
 # indvertex2  = round(Integer, changeInd3D(n,1,lHalf,n,m,l) + subStencil3D(1,3,2,Ind_relative));
 # for  x = xmax,  y = ymin z = anything
     (Row, Col, Val) = createIndices(Ind[end,1,2:end-1][:],
-                                    Indices[9][:], (Values[9]*Entries[9])[ :]);
+                                    Indices[9][:], (Values[9]*Entries[9])[:]);
 
     rowA = vcat(rowA,Row);
     colA = vcat(colA,Col);
@@ -1803,7 +2196,7 @@ function buildSparseAG3D(k::Float64,X::Array{Float64,1},Y::Array{Float64,1},
 # indvertex3  = round(Integer, changeInd3D(1,m,lHalf,n,m,l) + subStencil3D(3,1,2,Ind_relative));
 # for  x = xmin,  y = ymax z = anything
     (Row, Col, Val) = createIndices(Ind[1,end,2:end-1][:],
-                                    Indices[10][:], (Values[10*Entries[10)] [:]);
+                                    Indices[10][:], (Values[10]*Entries[10])[:]);
 
     rowA = vcat(rowA,Row);
     colA = vcat(colA,Col);
@@ -1812,7 +2205,7 @@ function buildSparseAG3D(k::Float64,X::Array{Float64,1},Y::Array{Float64,1},
 # indvertex4  = round(Integer, changeInd3D(n,m,lHalf,n,m,l) + subStencil3D(1,1,2,Ind_relative));
 # for  x = xmax,  y = ymax z = anything
     (Row, Col, Val) = createIndices(Ind[end,end,2:end-1][:],
-                                    Indices[11][:], (Values[11*Entries[11)] [:]);
+                                    Indices[11][:], (Values[11]*Entries[11])[:]);
 
     rowA = vcat(rowA,Row);
     colA = vcat(colA,Col);
@@ -1821,7 +2214,7 @@ function buildSparseAG3D(k::Float64,X::Array{Float64,1},Y::Array{Float64,1},
 # indvertex5  = round(Integer, changeInd3D(1,mHalf,1,n,m,l) + subStencil3D(3,2,3,Ind_relative));
 # for  x = xmax,  y = ymax z = anything
     (Row, Col, Val) = createIndices(Ind[1,2:end-1,1][:],
-                                    Indices[12][:], (Values[12*Entries[12)] [:]);
+                                    Indices[12][:], (Values[12]*Entries[12])[:]);
 
     rowA = vcat(rowA,Row);
     colA = vcat(colA,Col);
@@ -1830,7 +2223,7 @@ function buildSparseAG3D(k::Float64,X::Array{Float64,1},Y::Array{Float64,1},
 # indvertex6  = round(Integer, changeInd3D(n,mHalf,1,n,m,l) + subStencil3D(1,2,3,Ind_relative));
 # for  x = xmax,  y = any z = zmin
     (Row, Col, Val) = createIndices(Ind[end,2:end-1,1][:],
-                                    Indices[13][:], (Values[13*Entries[13)] [:]);
+                                    Indices[13][:], (Values[13]*Entries[13])[:]);
 
     rowA = vcat(rowA,Row);
     colA = vcat(colA,Col);
@@ -1839,7 +2232,7 @@ function buildSparseAG3D(k::Float64,X::Array{Float64,1},Y::Array{Float64,1},
 # indvertex7  = round(Integer, changeInd3D(1,mHalf,l,n,m,l) + subStencil3D(3,2,1,Ind_relative));
 # for  x = xmin,  y = any z = zmax
     (Row, Col, Val) = createIndices(Ind[1,2:end-1,end][:],
-                                    Indices[14][:], (Values[14*Entries[14)] [:]);
+                                    Indices[14][:], (Values[14]*Entries[14])[:]);
 
     rowA = vcat(rowA,Row);
     colA = vcat(colA,Col);
@@ -1848,7 +2241,7 @@ function buildSparseAG3D(k::Float64,X::Array{Float64,1},Y::Array{Float64,1},
 # indvertex8  = round(Integer, changeInd3D(n,mHalf,l,n,m,l) + subStencil3D(1,2,1,Ind_relative));
 # for  x = xmax,  y = any  z = zmax
     (Row, Col, Val) = createIndices(Ind[end,2:end-1,end][:],
-                                    Indices[15][:], (Values[15*Entries[15)] [:]);
+                                    Indices[15][:], (Values[15]*Entries[15])[:]);
 
     rowA = vcat(rowA,Row);
     colA = vcat(colA,Col);
@@ -1857,7 +2250,7 @@ function buildSparseAG3D(k::Float64,X::Array{Float64,1},Y::Array{Float64,1},
 # indvertex9  = round(Integer, changeInd3D(nHalf,1,1,n,m,l) + subStencil3D(2,3,3,Ind_relative));
 # for  x = any,  y = tmin  z = zmin
     (Row, Col, Val) = createIndices(Ind[2:end-1,1,1][:],
-                                    Indices[16][:], (Values[16*Entries[16)] [:]);
+                                    Indices[16][:], (Values[16]*Entries[16])[:]);
 
     rowA = vcat(rowA,Row);
     colA = vcat(colA,Col);
@@ -1866,7 +2259,7 @@ function buildSparseAG3D(k::Float64,X::Array{Float64,1},Y::Array{Float64,1},
 # indvertex10 = round(Integer, changeInd3D(nHalf,m,1,n,m,l) + subStencil3D(2,1,3,Ind_relative));
 # for  x = any,  y = ymax  z = zmin
     (Row, Col, Val) = createIndices(Ind[2:end-1,end,1][:],
-                                    Indices[17][:], (Values[17*Entries[17)] [:]);
+                                    Indices[17][:], (Values[17]*Entries[17])[:]);
 
     rowA = vcat(rowA,Row);
     colA = vcat(colA,Col);
@@ -1875,7 +2268,7 @@ function buildSparseAG3D(k::Float64,X::Array{Float64,1},Y::Array{Float64,1},
 # indvertex11 = round(Integer, changeInd3D(nHalf,1,l,n,m,l) + subStencil3D(2,3,1,Ind_relative));
 # for  x = any,  y = ymin  z = zmax
     (Row, Col, Val) = createIndices(Ind[2:end-1,1,end][:],
-                                    Indices[18][:], (Values[18*Entries[18)] [:]);
+                                    Indices[18][:], (Values[18]*Entries[18])[:]);
 
     rowA = vcat(rowA,Row);
     colA = vcat(colA,Col);
@@ -1884,7 +2277,7 @@ function buildSparseAG3D(k::Float64,X::Array{Float64,1},Y::Array{Float64,1},
 # indvertex12 = round(Integer, changeInd3D(nHalf,m,l,n,m,l) + subStencil3D(2,1,1,Ind_relative));
 # for  x = any,  y = ymax  z = zmax
     (Row, Col, Val) = createIndices(Ind[2:end-1,end,end][:],
-                                    Indices[19][:], (Values[19*Entries[19)] [:]);
+                                    Indices[19][:], (Values[19]*Entries[19])[:]);
 
     rowA = vcat(rowA,Row);
     colA = vcat(colA,Col);
@@ -1896,141 +2289,69 @@ function buildSparseAG3D(k::Float64,X::Array{Float64,1},Y::Array{Float64,1},
 
 # indcorner1 = round(Integer, changeInd3D(1,1,1,n,m,l) + Ind_relative[2:3,2:3,2:3][:]);
     (Row, Col, Val) = createIndices(Ind[1,1,1],
-                                    Indices[20][:], (Values[20*Entries[20)] [:]);
+                                    Indices[20][:], (Values[20]*Entries[20])[:]);
 
     rowA = vcat(rowA,Row)
     colA = vcat(colA,Col)
     valA = vcat(valA,Val)
 # indcorner2 = round(Integer, changeInd3D(n,1,1,n,m,l) + Ind_relative[1:2,2:3,2:3][:]);
     (Row, Col, Val) = createIndices(Ind[end,1,1],
-                                    Indices[21][:], (Values[21*Entries[21)] [:]);
+                                    Indices[21][:], (Values[21]*Entries[21])[:]);
 
     rowA = vcat(rowA,Row)
     colA = vcat(colA,Col)
     valA = vcat(valA,Val)
 # indcorner3 = round(Integer, changeInd3D(1,m,1,n,m,l) + Ind_relative[2:3,1:2,2:3][:]);
     (Row, Col, Val) = createIndices(Ind[1,end,1],
-                                    Indices[22][:], (Values[22*Entries[22)] [:]);
+                                    Indices[22][:], (Values[22]*Entries[22])[:]);
 
     rowA = vcat(rowA,Row)
     colA = vcat(colA,Col)
     valA = vcat(valA,Val)
 # indcorner4 = round(Integer, changeInd3D(n,m,1,n,m,l) + Ind_relative[1:2,1:2,2:3][:]);
     (Row, Col, Val) = createIndices(Ind[end,end,1],
-                                    Indices[23][:], (Values[23*Entries[23)] [:]);
+                                    Indices[23][:], (Values[23]*Entries[23])[:]);
 
     rowA = vcat(rowA,Row)
     colA = vcat(colA,Col)
     valA = vcat(valA,Val)
 # indcorner5 = round(Integer, changeInd3D(1,1,l,n,m,l) + Ind_relative[2:3,2:3,1:2][:]);
     (Row, Col, Val) = createIndices(Ind[1,1,end],
-                                    Indices[24][:], (Values[24*Entries[24)] [:]);
+                                    Indices[24][:], (Values[24]*Entries[24])[:]);
 
     rowA = vcat(rowA,Row)
     colA = vcat(colA,Col)
     valA = vcat(valA,Val)
 # indcorner6 = round(Integer, changeInd3D(n,1,l,n,m,l) + Ind_relative[1:2,2:3,1:2][:]);
     (Row, Col, Val) = createIndices(Ind[end,1,end],
-                                    Indices[25][:], (Values[25*Entries[25)] [:]);
+                                    Indices[25][:], (Values[25]*Entries[25])[:]);
 
     rowA = vcat(rowA,Row)
     colA = vcat(colA,Col)
     valA = vcat(valA,Val)
 # indcorner7 = round(Integer, changeInd3D(1,m,l,n,m,l) + Ind_relative[2:3,1:2,1:2][:]);
     (Row, Col, Val) = createIndices(Ind[1,end,end],
-                                    Indices[26][:], (Values[26*Entries[26)] [:]);
+                                    Indices[26][:], (Values[26]*Entries[26])[:]);
 
     rowA = vcat(rowA,Row)
     colA = vcat(colA,Col)
     valA = vcat(valA,Val)
 # indcorner8 = round(Integer, changeInd3D(n,m,l,n,m,l) + Ind_relative[1:2,1:2,1:2][:]);
     (Row, Col, Val) = createIndices(Ind[end,end,end],
-                                    Indices[27][:], (Values[27*Entries[27)] [:]);
+                                    Indices[27][:], (Values[27]*Entries[27])[:]);
 
     rowA = vcat(rowA,Row)
     colA = vcat(colA,Col)
     valA = vcat(valA,Val)
 
-
-    A = sparse(rowA,colA,valA);
-
-
-
-
-
-    ValuesAG = Values[1]*Entries[1];
-    (rowA, colA, valA) = createIndices(Ind[2:end-1,2:end-1][:],
-                                    Indices[1][:], ValuesAG[:]);
-
-    ValuesAG = Values[2]*Entries[2];
-    (Row, Col, Val) = createIndices(Ind[1,2:end-1][:],
-                                    Indices[2][:], ValuesAG[:]);
-
-    rowA = vcat(rowA,Row);
-    colA = vcat(colA,Col);
-    valA = vcat(valA,Val);
-
-    ValuesAG = Values[3]*Entries[3];
-    (Row, Col, Val) = createIndices(Ind[end,2:end-1][:],
-                                    Indices[3][:], ValuesAG[:]);
-
-    rowA = vcat(rowA,Row)
-    colA = vcat(colA,Col)
-    valA = vcat(valA,Val)
-
-    ValuesAG = Values[4]*Entries[4];
-    (Row, Col, Val) = createIndices(Ind[2:end-1,1][:],
-                                    Indices[4][:], ValuesAG[:]);
-
-    rowA = vcat(rowA,Row)
-    colA = vcat(colA,Col)
-    valA = vcat(valA,Val)
-
-    ValuesAG = Values[5]*Entries[5];
-    (Row, Col, Val) = createIndices(Ind[2:end-1,end][:],
-                                    Indices[5][:], ValuesAG[:]);
-
-    rowA = vcat(rowA,Row)
-    colA = vcat(colA,Col)
-    valA = vcat(valA,Val)
-
-    ValuesAG = Values[6]*Entries[6];
-    (Row, Col, Val) = createIndices(Ind[1,1],
-                                    Indices[6][:], ValuesAG[:]);
-
-    rowA = vcat(rowA,Row)
-    colA = vcat(colA,Col)
-    valA = vcat(valA,Val)
-
-    ValuesAG = Values[7]*Entries[7];
-    (Row, Col, Val) = createIndices(Ind[end,1],
-                                    Indices[7][:], ValuesAG[:]);
-
-    rowA = vcat(rowA,Row)
-    colA = vcat(colA,Col)
-    valA = vcat(valA,Val)
-
-    ValuesAG = Values[8]*Entries[8];
-    (Row, Col, Val) = createIndices(Ind[1,end],
-                                    Indices[8][:], ValuesAG[:]);
-
-    rowA = vcat(rowA,Row)
-    colA = vcat(colA,Col)
-    valA = vcat(valA,Val)
-
-    ValuesAG = Values[9]*Entries[9];
-    (Row, Col, Val) = createIndices(Ind[end,end],
-                                    Indices[9][:], ValuesAG[:]);
-
-    rowA = vcat(rowA,Row)
-    colA = vcat(colA,Col)
-    valA = vcat(valA,Val)
 
 
     AG = sparse(rowA,colA,valA);
 
     return AG;
 end
+
+
 
 ######################## Randomized methods ##############################
 ######not working

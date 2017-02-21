@@ -7,6 +7,7 @@ using PyPlot
 using IterativeSolvers
 
 include("../src/FastConvolution.jl")
+include("../src/FastConvolution3D.jl")
 include("../src/Preconditioner.jl")
 
 
@@ -17,8 +18,10 @@ FFTW.set_num_threads(4);
 BLAS.set_num_threads(4);
 
 #Defining Omega
-h = 1/64
+h = 1/32
 k = 1/h
+
+D0 = 0.0;
 
 # size of box
 a  = 1
@@ -52,13 +55,15 @@ figure(5); clf(); imshow(real(NU[:,:,15]))
 fastconv = buildFastConvolution3D(x,y,z,X,Y,Z,h,k,nu, quadRule = "Greengard_Vico");
 
 # # assembling the sparsifiying preconditioner
- As = buildSparseA3D(k,X,Y,Z,D0, n ,m, l);
+@time As = buildSparseA3DConv(k,X,Y,Z,fastconv, n ,m, l);
 
 # # assembling As*( I + k^2G*nu)
-# Mapproxsp = As + k^2*(buildSparseAG(k,X,Y,D0, n ,m)*spdiagm(nu(X,Y)));
+#Mapproxsp = As + k^2*(buildSparseAG3D(k,X,Y,Z,D0, n ,m,l)*spdiagm(nu(X,Y,Z)));
+@time Mapproxsp = As + k^2*(buildSparseAG3DConv(k,X,Y,Z,fastconv, n ,m,l)*spdiagm(nu(X,Y,Z)));
+
 
 # # defining the preconditioner
-# precond = SparsifyingPreconditioner(Mapproxsp, As)
+precond = SparsifyingPreconditioner(Mapproxsp, As)
 
 # building the RHS from the incident field
 u_inc = exp(k*im*X);
@@ -68,7 +73,7 @@ rhs = -(fastconv*u_inc - u_inc);
 u = zeros(Complex128,N);
 
 # solving the system using GMRES
-@time info =  gmres!(u, fastconv, rhs, maxiter = 30, restart=5)
+@time info =  gmres!(u, fastconv, rhs, precond)
 println(info[2].residuals[:])
 
 # plotting the solution
