@@ -55,7 +55,8 @@ precond = SparsifyingPreconditioner(Mapproxsp, As)
 
 # building the RHS from the incident field
 u_inc = exp(k*im*X);
-rhs = -(fastconv*u_inc - u_inc);
+rhs = -k^2*FFTconvolution(fastconv, nu(X,Y).*u_inc) ;
+
 #rhs = u_inc;
 
 # allocating the solution

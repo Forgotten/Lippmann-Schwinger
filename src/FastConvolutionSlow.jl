@@ -1,6 +1,5 @@
 # Class containing the objects for the windowed version of the integral operator
-# for the slow varying quantity along the principal ray direction 
-
+# for the slow varying quantity along the principal ray direction
 
 type FastMslow
     # type to encapsulate the fast application of M = I + omega^2G*spadiagm(nu)
@@ -43,83 +42,83 @@ function *(M::FastMslow, b::Array{Complex128,1})
     return (b + (exp(-1im*M.omega*(M.e[1]*M.x + M.e[2]*M.y)).*(B[:])))
 end
 
-# TO DO: add more parameters for the window in here
-function buildFastConvolutionSlow(x::Array{Float64,1},y::Array{Float64,1},
-                                  h::Float64,k,nu::Function, e::Array{Float64,1};
-                                  quadRule::String = "trapezoidal",
-                                  window::String = "normal")
+# # TO DO: add more parameters for the window in here
+# function buildFastConvolutionSlow(x::Array{Float64,1},y::Array{Float64,1},
+#                                   h::Float64,k,nu::Function, e::Array{Float64,1};
+#                                   quadRule::String = "trapezoidal",
+#                                   window::String = "normal")
 
-    if quadRule == "trapezoidal"
-        if window == "normal" 
+#     if quadRule == "trapezoidal"
+#         if window == "normal"
 
-            (ppw,D) = referenceValsTrapRule();
-            D0      = D[round(Int,k*h)];
-            (n,m) = length(x), length(y)
-            Ge    = buildGConv(x,y,h,n,m,D0,k);
-            GFFT  = fft(Ge);
-            X = repmat(x, 1, m)[:]
-            Y = repmat(y', n,1)[:]
-        end
-    return FastM(GFFT,nu(X,Y),2*n-1,2*m-1,n, m, k);
+#             (ppw,D) = referenceValsTrapRule();
+#             D0      = D[round(Int,k*h)];
+#             (n,m) = length(x), length(y)
+#             Ge    = buildGConv(x,y,h,n,m,D0,k);
+#             GFFT  = fft(Ge);
+#             X = repmat(x, 1, m)[:]
+#             Y = repmat(y', n,1)[:]
+#         end
+#     return FastM(GFFT,nu(X,Y),2*n-1,2*m-1,n, m, k);
 
-  elseif quadRule == "Greengard_Vico"
+#   elseif quadRule == "Greengard_Vico"
 
-      Lp = 4*(abs(x[end] - x[1]) + h)
-      L  =   (abs(x[end] - x[1]) + h)*1.5
-      (n,m) = length(x), length(y)
-      X = repmat(x, 1, m)[:]
-      Y = repmat(y', n,1)[:]
+#       Lp = 4*(abs(x[end] - x[1]) + h)
+#       L  =   (abs(x[end] - x[1]) + h)*1.5
+#       (n,m) = length(x), length(y)
+#       X = repmat(x, 1, m)[:]
+#       Y = repmat(y', n,1)[:]
 
-      # this is depending if n is odd or not
-      if mod(n,2) == 0
-        kx = (-(2*n):1:(2*n-1));
-        ky = (-(2*m):1:(2*m-1));
+#       # this is depending if n is odd or not
+#       if mod(n,2) == 0
+#         kx = (-(2*n):1:(2*n-1));
+#         ky = (-(2*m):1:(2*m-1));
 
-        KX = (2*pi/Lp)*repmat(kx, 1, 4*m);
-        KY = (2*pi/Lp)*repmat(ky', 4*n,1);
+#         KX = (2*pi/Lp)*repmat(kx, 1, 4*m);
+#         KY = (2*pi/Lp)*repmat(ky', 4*n,1);
 
-        S = sqrt(KX.^2 + KY.^2);
+#         S = sqrt(KX.^2 + KY.^2);
 
-        GFFT = Gtruncated2D(L, k, S)
-        return FastM(GFFT, nu(X,Y), 4*n, 4*m,
-                     n, m, k , quadRule="Greengard_Vico");
-      else
-        # kx = (-2*(n-1):1:2*(n-1) )/4;
-        # ky = (-2*(m-1):1:2*(m-1) )/4;
+#         GFFT = Gtruncated2D(L, k, S)
+#         return FastM(GFFT, nu(X,Y), 4*n, 4*m,
+#                      n, m, k , quadRule="Greengard_Vico");
+#       else
+#         # kx = (-2*(n-1):1:2*(n-1) )/4;
+#         # ky = (-2*(m-1):1:2*(m-1) )/4;
 
-        # KX = (2*pi/Lp)*repmat(kx, 1, 4*m-3);
-        # KY = (2*pi/Lp)*repmat(ky', 4*n-3,1);
+#         # KX = (2*pi/Lp)*repmat(kx, 1, 4*m-3);
+#         # KY = (2*pi/Lp)*repmat(ky', 4*n-3,1);
 
-        # S = sqrt(KX.^2 + KY.^2);
+#         # S = sqrt(KX.^2 + KY.^2);
 
-        # GFFT = Gtruncated2D(L, k, S)
+#         # GFFT = Gtruncated2D(L, k, S)
 
-        # return FastM(GFFT,nu(X,Y),4*n-3,4*m-3,
-        #              n,m, k,quadRule = "Greengard_Vico");
+#         # return FastM(GFFT,nu(X,Y),4*n-3,4*m-3,
+#         #              n,m, k,quadRule = "Greengard_Vico");
 
-        kx = (-2*n:1:2*n-1);
-        ky = (-2*m:1:2*m-1);
+#         kx = (-2*n:1:2*n-1);
+#         ky = (-2*m:1:2*m-1);
 
-        KX = (2*pi/Lp)*repmat( kx, 1,4*m);
-        KY = (2*pi/Lp)*repmat(ky',4*n,  1);
+#         KX = (2*pi/Lp)*repmat( kx, 1,4*m);
+#         KY = (2*pi/Lp)*repmat(ky',4*n,  1);
 
-        S = sqrt(KX.^2 + KY.^2);
+#         S = sqrt(KX.^2 + KY.^2);
 
-        GFFT = Gtruncated2D(L, k, S)
+#         GFFT = Gtruncated2D(L, k, S)
 
-        return FastM(GFFT,nu(X,Y),4*n,4*m,
-                     n,m, k,quadRule = "Greengard_Vico");
+#         return FastM(GFFT,nu(X,Y),4*n,4*m,
+#                      n,m, k,quadRule = "Greengard_Vico");
 
 
-    end
-  end
-end
+#     end
+#   end
+# end
 
 
 
 function buildGConvWindowed(x,y,h::Float64,n::Int64,m::Int64,D0,k::Float64)
     # function to build the convolution vector for the
-    # fast application of the convolution, in this case we add a directional 
+    # fast application of the convolution, in this case we add a directional
     # filter to eliminate the oscillations
 
     # this is built for odd n and odd m.
