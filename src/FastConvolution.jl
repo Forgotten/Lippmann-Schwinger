@@ -33,14 +33,6 @@ function *(M::FastM, b::Array{Complex128,1})
 end
 
 
-function *(M::FastM3D, b::Array{Complex128,1}; verbose::Bool=false)
-    # multiply by nu, compute the convolution and then
-    # multiply by omega^2
-    B = M.omega^2*(FFTconvolution(M,M.nu.*b, verbose=verbose))
-
-    return (b + B)
-end
-
 
 
 @inline function fastconvolution(M::FastM, b::Array{Complex128,1})
