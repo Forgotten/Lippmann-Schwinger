@@ -21,7 +21,8 @@ type FastMslowDual
                            x::Array{Float64,1},
                            y::Array{Float64,1},
                            ne::Int64,me::Int64,n::Int64,m::Int64,
-                           k::Float64,e::Array{Float64,1}; quadRule::String = "trapezoidal")
+                           k::Float64,e::Array{Float64,1};
+                           quadRule::String = "trapezoidal")
       return new(GFFT,nu,x,y,ne,me,n, m, k,e, quadRule)
     end
 end
@@ -42,7 +43,8 @@ end
     # M using a Toeplitz reduction via a FFT
 
     # computing omega^2 nu G*(b)
-    B = M.omega^2*(M.nu.*FFTconvolution(M,exp(1im*M.omega*(M.e[1]*M.x + M.e[2]*M.y)).*b))
+    B = M.omega^2*(M.nu.*FFTconvolution(M,
+                   exp(1im*M.omega*(M.e[1]*M.x + M.e[2]*M.y)).*b))
 
     # returning b + G*(b nu)
     return (-b + exp(-1im*M.omega*(M.e[1]*M.x + M.e[2]*M.y)).*B[:])
@@ -83,7 +85,7 @@ end
       BExt[1:M.n,1:M.m]= reshape(M.nu.*b,M.n,M.m) ;
 
       # Fourier Transform
-      BFft = fftshift(fft(BExt)) 
+      BFft = fftshift(fft(BExt))
      # Component-wise multiplication
       BFft = M.GFFT.*BFft
       # Inverse Fourier Transform
@@ -98,8 +100,8 @@ end
 
 function buildFastConvolutionSlowDual(x::Array{Float64,1},y::Array{Float64,1},
                                       h::Float64,k::Float64,
-                                      nu::Function, 
-                                      e::Array{Float64,1}; 
+                                      nu::Function,
+                                      e::Array{Float64,1};
                                       quadRule::String = "trapezoidal")
 
   if quadRule == "trapezoidal"
