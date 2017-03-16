@@ -1,9 +1,9 @@
-# File with the function necessary to implement the fast convolution 
+# File with the function necessary to implement the fast convolution
 # in 3D and all the necessary machinery to build the preconditioner
 
 
 type FastM3D
-    ## we may want to add an FFT plan to make the evaluation faster 
+    ## we may want to add an FFT plan to make the evaluation faster
     # type to encapsulate the fast application of M = I + omega^2G*spadiagm(nu)
     GFFT :: Array{Complex128,3}
     nu :: Array{Float64,1}
@@ -36,9 +36,9 @@ end
 
 @inline function FFTconvolution(M::FastM3D, b::Array{Complex128,1};
                                 verbose::Bool=false )
-    # function to compute the convolution with the convolution kernel 
-    # defined within the FastM3D type using the FFT 
-    # TODO add a fft plan in here to accelerate the speed 
+    # function to compute the convolution with the convolution kernel
+    # defined within the FastM3D type using the FFT
+    # TODO add a fft plan in here to accelerate the speed
     # input: M::FastM3D type containing the convolution kernel
     #        b::Array{Complex128,1} vector to apply the conv kernel
     verbose && println("Application of the 3D convolution")
@@ -68,7 +68,7 @@ end
   #           Y: mesh contaning the Y position of each point
   #           Z: mesh contaning the Y position of each point
   #           indS: indices in which the sources are located
-  #           fastconv: FastM3D type for the application of the 
+  #           fastconv: FastM3D type for the application of the
   #                     discrete convolution kernel
 
   R  = zeros(Complex128, length(indS), length(X))
@@ -79,8 +79,8 @@ end
     end
 
    Gc =  zeros(Complex128, length(indS), length(X))
-   # this can be parallelized but then, we may have cache 
-   # aceess problem 
+   # this can be parallelized but then, we may have cache
+   # aceess problem
     for i = 1:length(indS)
         Gc[i,:]= FFTconvolution(fastconv, R[i,:][:])
     end
@@ -120,6 +120,78 @@ end
     end
     return Gc
 end
+
+#######################################################
+### function to enhance parallelism
+##################################################
+# function SampleGtruncated3D(GFFT, L,k,kx,ky,kz)
+#     n = length(kx)
+#     m = length(ly)
+#     l = length(kz)
+
+#     R  = SharedArray(Float64, length(indS), length(X))
+#     kxshared = convert(SharedArray, kx)
+#     kyshared = convert(SharedArray, ky)
+#     kzshared = convert(SharedArray, kz)
+
+# end
+
+
+
+
+# @everywhere function myrange(q::SharedArray)
+#     idx = indexpids(q)
+#     if idx == 0
+#         # This worker is not assigned a piece
+#         return 1:0, 1:0
+#     end
+#     nchunks = length(procs(q))
+#     splits = [round(Int, s) for s in linspace(0,size(q,2),nchunks+1)]
+#     1:size(q,1), splits[idx]+1:splits[idx+1]
+# end
+
+# @everywhere function sampleGkernelparTruncated3D(k,r::Array{Float64,1},h)
+#   n  = length(r)
+#   println("Sample kernel parallel loop ")
+#   G = SharedArray(Complex128,n)
+#   rshared = convert(SharedArray, r)
+#   @sync @parallel for ii = 1:n
+#           @inbounds  G[ii] = 1im/4*hankelh1(0, k*rshared[ii])*h^2;
+#   end
+#   return sdata(G)
+# end
+
+# ## two different versions of the same function with slight different input
+
+# @everywhere function sampleGkernelpar(k,R::Array{Float64,2},h)
+#   (m,n)  = size(R)
+#   println("Sample kernel parallel loop with chunks ")
+#   G = SharedArray(Complex128,m,n)
+#   @time Rshared = convert(SharedArray, R)
+#   @sync begin
+#         for p in procs(G)
+#              @async remotecall_fetch(sampleGkernel_shared_chunk!,p, G, Rshared,k,h)
+#         end
+#     end
+#   return sdata(G)
+# end
+
+
+# # little convenience wrapper
+# @everywhere sampleGkernel_shared_chunk!(q,u,k,h) = sampleGkernel_chunk!(q,u,k,h, myrange(q)...)
+
+# @everywhere @inline function sampleGkernel_chunk!(G,R,k::Float64,h::Float64,
+#                                                   irange::UnitRange{Int64}, jrange::UnitRange{Int64})
+#     #@show (irange, jrange)  # display so we can see what's happening
+#     # println(myid())
+#     # println(typeof(irange))
+#     alpha = 1im/4*h^2
+#     for i in irange
+#       for j in jrange
+#         @inbounds G[i,j] = alpha*hankelh1(0, k*R[i,j]);
+#       end
+#     end
+# end
 
 
 # we need to write the convolution in 3D, the aim is to have 2 and 3 convolution
@@ -178,6 +250,7 @@ function buildFastConvolution3D(x,y,z,X,Y,Z,h,k,nu; quadRule::String = "Greengar
         # Computing the convolution kernel (we just use a for loop in order to save memory)
         GFFT = zeros(Complex128, 4*n-3, 4*m-3, 4*l-3)
 
+        # This loop can be easily parallelized
         for i=1:4*n-3, j=1:4*m-3, p=1:4*l-3
           GFFT[i,j,p]  = Gtruncated3D(L,k,sqrt(kx[i]^2 + ky[j]^2 + kz[p]^2));
         end
@@ -199,7 +272,7 @@ function buildSparseAG3DConv(k::Float64,X::Array{Float64,1},Y::Array{Float64,1},
 
     # Quick fix: TODO change this!
 
-  
+
     Entries = entriesSparseG3D(k,X,Y,Z,fastconv, n ,m, l);
     Ind = reshape(collect(1:n*m*l),n,m,l);
 
@@ -648,7 +721,7 @@ end
 
 
 function entriesSparseA3D(k,X::Array{Float64,1},Y::Array{Float64,1},
-                          Z::Array{Float64,1},fastconv::FastM3D, 
+                          Z::Array{Float64,1},fastconv::FastM3D,
                           n::Int64 ,m::Int64, l::Int64)
   # in this case we need to build everythig with ranodmized methods
   # we need to have an odd number of points
@@ -1165,4 +1238,632 @@ function buildSparseA3DConv(k::Float64,X::Array{Float64,1},Y::Array{Float64,1},
     A = sparse(rowA,colA,valA);
 
     return A;
+end
+
+
+
+
+function buildSparseAG3DConv(k::Float64,X::Array{Float64,1},Y::Array{Float64,1},
+                          Z::Array{Float64,1},
+                          fastconv::FastM3D, n::Int64 ,m::Int64,l::Int64; method::String = "normal")
+# function that build the sparsigying preconditioner
+
+    # Quick fix: TODO change this!
+
+
+    Entries = entriesSparseG3D(k,X,Y,Z,fastconv, n ,m, l);
+    Ind = reshape(collect(1:n*m*l),n,m,l);
+
+    if method == "normal"
+      (Indices, Values) = entriesSparseA3D(k,X,Y,Z,fastconv, n ,m,l);
+    elseif method == "randomized"
+      println("Not implemented yet")
+      (Indices, Values) = entriesSparseARand(k,X,Y,D0, n ,m);
+    end
+
+    ValuesAG = Values[1]*Entries[1];
+
+
+    # building the indices, columns and rows for the interior
+    (rowAG, colAG, valAG) = createIndices(Ind[2:end-1,2:end-1,2:end-1][:],
+                                    Indices[1][:], (Values[1]*Entries[1])[ :]);
+
+
+    # for  x = xmin,  y = anything z = anything
+    (Row, Col, Val) = createIndices(Ind[1,2:end-1,2:end-1][:],
+                                    Indices[2][:], (Values[2]*Entries[2])[ :]);
+
+    rowAG = vcat(rowAG,Row);
+    colAG = vcat(colAG,Col);
+    valAG = vcat(valAG,Val);
+
+    # for  x = xmax,  y = anything z = anything
+    (Row, Col, Val) = createIndices(Ind[end,2:end-1,2:end-1][:],
+                                    Indices[3][:], (Values[3]*Entries[3])[ :]);
+
+    rowAG = vcat(rowAG,Row)
+    colAG = vcat(colAG,Col)
+    valAG = vcat(valAG,Val)
+
+    # for  y = ymin,  x = anything z = anything
+    (Row, Col, Val) = createIndices(Ind[2:end-1,1,2:end-1][:],
+                                    Indices[4][:], (Values[4]*Entries[4])[ :]);
+
+    rowAG = vcat(rowAG,Row)
+    colAG = vcat(colAG,Col)
+    valAG = vcat(valAG,Val)
+
+    # for  y = ymax,  x = anything z = anything
+    (Row, Col, Val) = createIndices(Ind[2:end-1,end,2:end-1][:],
+                                    Indices[5][:], (Values[5]*Entries[5])[ :]);
+
+    rowAG = vcat(rowAG,Row)
+    colAG = vcat(colAG,Col)
+    valAG = vcat(valAG,Val)
+
+    # for  z = zmin,  x = anything y = anything
+    (Row, Col, Val) = createIndices(Ind[2:end-1,2:end-1,1][:],
+                                    Indices[6][:], (Values[6]*Entries[6])[ :]);
+
+    rowAG = vcat(rowAG,Row)
+    colAG = vcat(colAG,Col)
+    valAG = vcat(valAG,Val)
+
+    # for  z = zmax,  x = anything y = anything
+    (Row, Col, Val) = createIndices(Ind[2:end-1,2:end-1,end][:],
+                                    Indices[7][:], (Values[7]*Entries[7])[ :]);
+
+    rowAG = vcat(rowAG,Row)
+    colAG = vcat(colAG,Col)
+    valAG = vcat(valAG,Val)
+
+
+
+
+
+# we need to incorporate the vertices
+
+# indvertex1  = round(Integer, changeInd3D(1,1,lHalf,n,m,l) + subStencil3D(3,3,2,Ind_relative));
+# for  x = xmin,  y = ymin z = anything
+    (Row, Col, Val) = createIndices(Ind[1,1,2:end-1][:],
+                                    Indices[8][:], (Values[8]*Entries[8])[ :]);
+
+    rowAG = vcat(rowAG,Row);
+    colAG = vcat(colAG,Col);
+    valAG = vcat(valAG,Val);
+
+# indvertex2  = round(Integer, changeInd3D(n,1,lHalf,n,m,l) + subStencil3D(1,3,2,Ind_relative));
+# for  x = xmax,  y = ymin z = anything
+    (Row, Col, Val) = createIndices(Ind[end,1,2:end-1][:],
+                                    Indices[9][:], (Values[9]*Entries[9])[:]);
+
+    rowAG = vcat(rowAG,Row);
+    colAG = vcat(colAG,Col);
+    valAG = vcat(valAG,Val);
+
+# indvertex3  = round(Integer, changeInd3D(1,m,lHalf,n,m,l) + subStencil3D(3,1,2,Ind_relative));
+# for  x = xmin,  y = ymax z = anything
+    (Row, Col, Val) = createIndices(Ind[1,end,2:end-1][:],
+                                    Indices[10][:], (Values[10]*Entries[10])[:]);
+
+    rowAG = vcat(rowAG,Row);
+    colAG = vcat(colAG,Col);
+    valAG = vcat(valAG,Val);
+
+# indvertex4  = round(Integer, changeInd3D(n,m,lHalf,n,m,l) + subStencil3D(1,1,2,Ind_relative));
+# for  x = xmax,  y = ymax z = anything
+    (Row, Col, Val) = createIndices(Ind[end,end,2:end-1][:],
+                                    Indices[11][:], (Values[11]*Entries[11])[:]);
+
+    rowAG = vcat(rowAG,Row);
+    colAG = vcat(colAG,Col);
+    valAG = vcat(valAG,Val);
+
+# indvertex5  = round(Integer, changeInd3D(1,mHalf,1,n,m,l) + subStencil3D(3,2,3,Ind_relative));
+# for  x = xmax,  y = ymax z = anything
+    (Row, Col, Val) = createIndices(Ind[1,2:end-1,1][:],
+                                    Indices[12][:], (Values[12]*Entries[12])[:]);
+
+    rowAG = vcat(rowAG,Row);
+    colAG = vcat(colAG,Col);
+    valAG = vcat(valAG,Val);
+
+# indvertex6  = round(Integer, changeInd3D(n,mHalf,1,n,m,l) + subStencil3D(1,2,3,Ind_relative));
+# for  x = xmax,  y = any z = zmin
+    (Row, Col, Val) = createIndices(Ind[end,2:end-1,1][:],
+                                    Indices[13][:], (Values[13]*Entries[13])[:]);
+
+    rowAG = vcat(rowAG,Row);
+    colAG = vcat(colAG,Col);
+    valAG = vcat(valAG,Val);
+
+# indvertex7  = round(Integer, changeInd3D(1,mHalf,l,n,m,l) + subStencil3D(3,2,1,Ind_relative));
+# for  x = xmin,  y = any z = zmax
+    (Row, Col, Val) = createIndices(Ind[1,2:end-1,end][:],
+                                    Indices[14][:], (Values[14]*Entries[14])[:]);
+
+    rowAG = vcat(rowAG,Row);
+    colAG = vcat(colAG,Col);
+    valAG = vcat(valAG,Val);
+
+# indvertex8  = round(Integer, changeInd3D(n,mHalf,l,n,m,l) + subStencil3D(1,2,1,Ind_relative));
+# for  x = xmax,  y = any  z = zmax
+    (Row, Col, Val) = createIndices(Ind[end,2:end-1,end][:],
+                                    Indices[15][:], (Values[15]*Entries[15])[:]);
+
+    rowAG = vcat(rowAG,Row);
+    colAG = vcat(colAG,Col);
+    valAG = vcat(valAG,Val);
+
+# indvertex9  = round(Integer, changeInd3D(nHalf,1,1,n,m,l) + subStencil3D(2,3,3,Ind_relative));
+# for  x = any,  y = tmin  z = zmin
+    (Row, Col, Val) = createIndices(Ind[2:end-1,1,1][:],
+                                    Indices[16][:], (Values[16]*Entries[16])[:]);
+
+    rowAG = vcat(rowAG,Row);
+    colAG = vcat(colAG,Col);
+    valAG = vcat(valAG,Val);
+
+# indvertex10 = round(Integer, changeInd3D(nHalf,m,1,n,m,l) + subStencil3D(2,1,3,Ind_relative));
+# for  x = any,  y = ymax  z = zmin
+    (Row, Col, Val) = createIndices(Ind[2:end-1,end,1][:],
+                                    Indices[17][:], (Values[17]*Entries[17])[:]);
+
+    rowAG = vcat(rowAG,Row);
+    colAG = vcat(colAG,Col);
+    valAG = vcat(valAG,Val);
+
+# indvertex11 = round(Integer, changeInd3D(nHalf,1,l,n,m,l) + subStencil3D(2,3,1,Ind_relative));
+# for  x = any,  y = ymin  z = zmax
+    (Row, Col, Val) = createIndices(Ind[2:end-1,1,end][:],
+                                    Indices[18][:], (Values[18]*Entries[18])[:]);
+
+    rowAG = vcat(rowAG,Row);
+    colAG = vcat(colAG,Col);
+    valAG = vcat(valAG,Val);
+
+# indvertex12 = round(Integer, changeInd3D(nHalf,m,l,n,m,l) + subStencil3D(2,1,1,Ind_relative));
+# for  x = any,  y = ymax  z = zmax
+    (Row, Col, Val) = createIndices(Ind[2:end-1,end,end][:],
+                                    Indices[19][:], (Values[19]*Entries[19])[:]);
+
+    rowAG = vcat(rowAG,Row);
+    colAG = vcat(colAG,Col);
+    valAG = vcat(valAG,Val);
+
+#################################################################################
+############## Now we incorporate the corners  ##################################
+#################################################################################
+
+# indcorner1 = round(Integer, changeInd3D(1,1,1,n,m,l) + Ind_relative[2:3,2:3,2:3][:]);
+    (Row, Col, Val) = createIndices(Ind[1,1,1],
+                                    Indices[20][:], (Values[20]*Entries[20])[:]);
+
+    rowAG = vcat(rowAG,Row)
+    colAG = vcat(colAG,Col)
+    valAG = vcat(valAG,Val)
+# indcorner2 = round(Integer, changeInd3D(n,1,1,n,m,l) + Ind_relative[1:2,2:3,2:3][:]);
+    (Row, Col, Val) = createIndices(Ind[end,1,1],
+                                    Indices[21][:], (Values[21]*Entries[21])[:]);
+
+    rowAG = vcat(rowAG,Row)
+    colAG = vcat(colAG,Col)
+    valAG = vcat(valAG,Val)
+# indcorner3 = round(Integer, changeInd3D(1,m,1,n,m,l) + Ind_relative[2:3,1:2,2:3][:]);
+    (Row, Col, Val) = createIndices(Ind[1,end,1],
+                                    Indices[22][:], (Values[22]*Entries[22])[:]);
+
+    rowAG = vcat(rowAG,Row)
+    colAG = vcat(colAG,Col)
+    valAG = vcat(valAG,Val)
+# indcorner4 = round(Integer, changeInd3D(n,m,1,n,m,l) + Ind_relative[1:2,1:2,2:3][:]);
+    (Row, Col, Val) = createIndices(Ind[end,end,1],
+                                    Indices[23][:], (Values[23]*Entries[23])[:]);
+
+    rowAG = vcat(rowAG,Row)
+    colAG = vcat(colAG,Col)
+    valAG = vcat(valAG,Val)
+# indcorner5 = round(Integer, changeInd3D(1,1,l,n,m,l) + Ind_relative[2:3,2:3,1:2][:]);
+    (Row, Col, Val) = createIndices(Ind[1,1,end],
+                                    Indices[24][:], (Values[24]*Entries[24])[:]);
+
+    rowAG = vcat(rowAG,Row)
+    colAG = vcat(colAG,Col)
+    valAG = vcat(valAG,Val)
+# indcorner6 = round(Integer, changeInd3D(n,1,l,n,m,l) + Ind_relative[1:2,2:3,1:2][:]);
+    (Row, Col, Val) = createIndices(Ind[end,1,end],
+                                    Indices[25][:], (Values[25]*Entries[25])[:]);
+
+    rowAG = vcat(rowAG,Row)
+    colAG = vcat(colAG,Col)
+    valAG = vcat(valAG,Val)
+# indcorner7 = round(Integer, changeInd3D(1,m,l,n,m,l) + Ind_relative[2:3,1:2,1:2][:]);
+    (Row, Col, Val) = createIndices(Ind[1,end,end],
+                                    Indices[26][:], (Values[26]*Entries[26])[:]);
+
+    rowAG = vcat(rowAG,Row)
+    colAG = vcat(colAG,Col)
+    valAG = vcat(valAG,Val)
+# indcorner8 = round(Integer, changeInd3D(n,m,l,n,m,l) + Ind_relative[1:2,1:2,1:2][:]);
+    (Row, Col, Val) = createIndices(Ind[end,end,end],
+                                    Indices[27][:], (Values[27]*Entries[27])[:]);
+
+    rowAG = vcat(rowAG,Row)
+    colAG = vcat(colAG,Col)
+    valAG = vcat(valAG,Val)
+
+
+
+    AG = sparse(rowAG,colAG,valAG);
+
+    return AG;
+end
+
+
+
+
+
+function buildSparseAG_A3DConv(k::Float64,X::Array{Float64,1},Y::Array{Float64,1},
+                          Z::Array{Float64,1},
+                          fastconv::FastM3D, n::Int64 ,m::Int64,l::Int64; method::String = "normal")
+# function that build the sparsigying preconditioner
+
+    # Quick fix: TODO change this!
+
+
+    Entries = entriesSparseG3D(k,X,Y,Z,fastconv, n ,m, l);
+    Ind = reshape(collect(1:n*m*l),n,m,l);
+
+    if method == "normal"
+      (Indices, Values) = entriesSparseA3D(k,X,Y,Z,fastconv, n ,m,l);
+    elseif method == "randomized"
+      println("Not implemented yet")
+      (Indices, Values) = entriesSparseARand(k,X,Y,D0, n ,m);
+    end
+
+
+    (rowA, colA, valA) = createIndices(Ind[2:end-1,2:end-1,2:end-1][:],
+                                    Indices[1][:], Values[1][:]);
+
+    # building the indices, columns and rows for the interior
+    (rowAG, colAG, valAG) = createIndices(Ind[2:end-1,2:end-1,2:end-1][:],
+                                    Indices[1][:], (Values[1]*Entries[1])[ :]);
+
+     # for  x = xmin,  y = anything z = anything
+    (Row, Col, Val) = createIndices(Ind[1,2:end-1,2:end-1][:],
+                                    Indices[2][:], Values[2][:]);
+
+    rowA = vcat(rowA,Row);
+    colA = vcat(colA,Col);
+    valA = vcat(valA,Val);
+
+    # for  x = xmin,  y = anything z = anything
+    (Row, Col, Val) = createIndices(Ind[1,2:end-1,2:end-1][:],
+                                    Indices[2][:], (Values[2]*Entries[2])[ :]);
+
+    rowAG = vcat(rowAG,Row);
+    colAG = vcat(colAG,Col);
+    valAG = vcat(valAG,Val);
+
+     # for  x = xmax,  y = anything z = anything
+    (Row, Col, Val) = createIndices(Ind[end,2:end-1,2:end-1][:],
+                                    Indices[3][:], Values[3][:]);
+
+    rowA = vcat(rowA,Row)
+    colA = vcat(colA,Col)
+    valA = vcat(valA,Val)
+
+    # for  x = xmax,  y = anything z = anything
+    (Row, Col, Val) = createIndices(Ind[end,2:end-1,2:end-1][:],
+                                    Indices[3][:], (Values[3]*Entries[3])[ :]);
+
+    rowAG = vcat(rowAG,Row)
+    colAG = vcat(colAG,Col)
+    valAG = vcat(valAG,Val)
+
+    # for  y = ymin,  x = anything z = anything
+    (Row, Col, Val) = createIndices(Ind[2:end-1,1,2:end-1][:],
+                                    Indices[4][:], Values[4][:]);
+
+    rowA = vcat(rowA,Row)
+    colA = vcat(colA,Col)
+    valA = vcat(valA,Val)
+
+    # for  y = ymin,  x = anything z = anything
+    (Row, Col, Val) = createIndices(Ind[2:end-1,1,2:end-1][:],
+                                    Indices[4][:], (Values[4]*Entries[4])[ :]);
+
+    rowAG = vcat(rowAG,Row)
+    colAG = vcat(colAG,Col)
+    valAG = vcat(valAG,Val)
+
+    # for  y = ymax,  x = anything z = anything
+    (Row, Col, Val) = createIndices(Ind[2:end-1,end,2:end-1][:],
+                                    Indices[5][:], Values[5][:]);
+
+    rowA = vcat(rowA,Row)
+    colA = vcat(colA,Col)
+    valA = vcat(valA,Val)
+
+    # for  y = ymax,  x = anything z = anything
+    (Row, Col, Val) = createIndices(Ind[2:end-1,end,2:end-1][:],
+                                    Indices[5][:], (Values[5]*Entries[5])[ :]);
+
+    rowAG = vcat(rowAG,Row)
+    colAG = vcat(colAG,Col)
+    valAG = vcat(valAG,Val)
+
+    # for  z = zmin,  x = anything y = anything
+    (Row, Col, Val) = createIndices(Ind[2:end-1,2:end-1,1][:],
+                                    Indices[6][:], Values[6][:]);
+
+    rowA = vcat(rowA,Row)
+    colA = vcat(colA,Col)
+    valA = vcat(valA,Val)
+
+    # for  z = zmin,  x = anything y = anything
+    (Row, Col, Val) = createIndices(Ind[2:end-1,2:end-1,1][:],
+                                    Indices[6][:], (Values[6]*Entries[6])[ :]);
+
+    rowAG = vcat(rowAG,Row)
+    colAG = vcat(colAG,Col)
+    valAG = vcat(valAG,Val)
+
+    # for  z = zmax,  x = anything y = anything
+    (Row, Col, Val) = createIndices(Ind[2:end-1,2:end-1,end][:],
+                                    Indices[7][:], Values[7][:]);
+
+    rowA = vcat(rowA,Row)
+    colA = vcat(colA,Col)
+    valA = vcat(valA,Val)
+
+    # for  z = zmax,  x = anything y = anything
+    (Row, Col, Val) = createIndices(Ind[2:end-1,2:end-1,end][:],
+                                    Indices[7][:], (Values[7]*Entries[7])[ :]);
+
+    rowAG = vcat(rowAG,Row)
+    colAG = vcat(colAG,Col)
+    valAG = vcat(valAG,Val)
+
+
+
+
+
+# we need to incorporate the vertices
+
+    # for  x = xmin,  y = ymin z = anything
+    (Row, Col, Val) = createIndices(Ind[1,1,2:end-1][:],
+                                    Indices[8][:], Values[8][:]);
+
+    rowA = vcat(rowA,Row);
+    colA = vcat(colA,Col);
+    valA = vcat(valA,Val);
+
+    # for  x = xmin,  y = ymin z = anything
+    (Row, Col, Val) = createIndices(Ind[1,1,2:end-1][:],
+                                    Indices[8][:], (Values[8]*Entries[8])[ :]);
+
+    rowAG = vcat(rowAG,Row);
+    colAG = vcat(colAG,Col);
+    valAG = vcat(valAG,Val);
+
+    # for  x = xmax,  y = ymin z = anything
+    (Row, Col, Val) = createIndices(Ind[end,1,2:end-1][:],
+                                    Indices[9][:], Values[9][:]);
+
+    rowA = vcat(rowA,Row);
+    colA = vcat(colA,Col);
+    valA = vcat(valA,Val);
+
+    # for  x = xmax,  y = ymin z = anything
+    (Row, Col, Val) = createIndices(Ind[end,1,2:end-1][:],
+                                    Indices[9][:], (Values[9]*Entries[9])[:]);
+
+    rowAG = vcat(rowAG,Row);
+    colAG = vcat(colAG,Col);
+    valAG = vcat(valAG,Val);
+
+    # for  x = xmin,  y = ymax z = anything
+    (Row, Col, Val) = createIndices(Ind[1,end,2:end-1][:],
+                                    Indices[10][:], Values[10][:]);
+
+    rowA = vcat(rowA,Row);
+    colA = vcat(colA,Col);
+    valA = vcat(valA,Val);
+
+    # for  x = xmin,  y = ymax z = anything
+    (Row, Col, Val) = createIndices(Ind[1,end,2:end-1][:],
+                                    Indices[10][:], (Values[10]*Entries[10])[:]);
+
+    rowAG = vcat(rowAG,Row);
+    colAG = vcat(colAG,Col);
+    valAG = vcat(valAG,Val);
+
+    # for  x = xmax,  y = ymax z = anything
+    (Row, Col, Val) = createIndices(Ind[end,end,2:end-1][:],
+                                    Indices[11][:], Values[11][:]);
+
+    rowA = vcat(rowA,Row);
+    colA = vcat(colA,Col);
+    valA = vcat(valA,Val);
+
+    # for  x = xmax,  y = ymax z = anything
+    (Row, Col, Val) = createIndices(Ind[end,end,2:end-1][:],
+                                    Indices[11][:], (Values[11]*Entries[11])[:]);
+
+    rowAG = vcat(rowAG,Row);
+    colAG = vcat(colAG,Col);
+    valAG = vcat(valAG,Val);
+
+# for  x = xmax,  y = ymax z = anything
+    (Row, Col, Val) = createIndices(Ind[1,2:end-1,1][:],
+                                    Indices[12][:], Values[12][:]);
+
+    rowA = vcat(rowA,Row);
+    colA = vcat(colA,Col);
+    valA = vcat(valA,Val);
+
+    # for  x = xmax,  y = ymax z = anything
+    (Row, Col, Val) = createIndices(Ind[1,2:end-1,1][:],
+                                    Indices[12][:], (Values[12]*Entries[12])[:]);
+
+    rowAG = vcat(rowAG,Row);
+    colAG = vcat(colAG,Col);
+    valAG = vcat(valAG,Val);
+
+# for  x = xmax,  y = any z = zmin
+    (Row, Col, Val) = createIndices(Ind[end,2:end-1,1][:],
+                                    Indices[13][:], Values[13][:]);
+
+    rowA = vcat(rowA,Row);
+    colA = vcat(colA,Col);
+    valA = vcat(valA,Val);
+    # for  x = xmax,  y = any z = zmin
+    (Row, Col, Val) = createIndices(Ind[end,2:end-1,1][:],
+                                    Indices[13][:], (Values[13]*Entries[13])[:]);
+
+    rowAG = vcat(rowAG,Row);
+    colAG = vcat(colAG,Col);
+    valAG = vcat(valAG,Val);
+
+# for  x = xmin,  y = any z = zmax
+    (Row, Col, Val) = createIndices(Ind[1,2:end-1,end][:],
+                                    Indices[14][:], Values[14][:]);
+
+    rowA = vcat(rowA,Row);
+    colA = vcat(colA,Col);
+    valA = vcat(valA,Val);
+    # for  x = xmin,  y = any z = zmax
+    (Row, Col, Val) = createIndices(Ind[1,2:end-1,end][:],
+                                    Indices[14][:], (Values[14]*Entries[14])[:]);
+
+    rowAG = vcat(rowAG,Row);
+    colAG = vcat(colAG,Col);
+    valAG = vcat(valAG,Val);
+
+# for  x = xmax,  y = any  z = zmax
+    (Row, Col, Val) = createIndices(Ind[end,2:end-1,end][:],
+                                    Indices[15][:], Values[15][:]);
+
+    rowA = vcat(rowA,Row);
+    colA = vcat(colA,Col);
+    valA = vcat(valA,Val);
+
+    # for  x = xmax,  y = any  z = zmax
+    (Row, Col, Val) = createIndices(Ind[end,2:end-1,end][:],
+                                    Indices[15][:], (Values[15]*Entries[15])[:]);
+
+    rowAG = vcat(rowAG,Row);
+    colAG = vcat(colAG,Col);
+    valAG = vcat(valAG,Val);
+
+# for  x = any,  y = tmin  z = zmin
+    (Row, Col, Val) = createIndices(Ind[2:end-1,1,1][:],
+                                    Indices[16][:], Values[16][:]);
+
+    rowA = vcat(rowA,Row);
+    colA = vcat(colA,Col);
+    valA = vcat(valA,Val);
+
+    # for  x = any,  y = tmin  z = zmin
+    (Row, Col, Val) = createIndices(Ind[2:end-1,1,1][:],
+                                    Indices[16][:], (Values[16]*Entries[16])[:]);
+
+    rowAG = vcat(rowAG,Row);
+    colAG = vcat(colAG,Col);
+    valAG = vcat(valAG,Val);
+
+# indvertex10 = round(Integer, changeInd3D(nHalf,m,1,n,m,l) + subStencil3D(2,1,3,Ind_relative));
+# for  x = any,  y = ymax  z = zmin
+    (Row, Col, Val) = createIndices(Ind[2:end-1,end,1][:],
+                                    Indices[17][:], (Values[17]*Entries[17])[:]);
+
+    rowAG = vcat(rowAG,Row);
+    colAG = vcat(colAG,Col);
+    valAG = vcat(valAG,Val);
+
+# indvertex11 = round(Integer, changeInd3D(nHalf,1,l,n,m,l) + subStencil3D(2,3,1,Ind_relative));
+# for  x = any,  y = ymin  z = zmax
+    (Row, Col, Val) = createIndices(Ind[2:end-1,1,end][:],
+                                    Indices[18][:], (Values[18]*Entries[18])[:]);
+
+    rowAG = vcat(rowAG,Row);
+    colAG = vcat(colAG,Col);
+    valAG = vcat(valAG,Val);
+
+# indvertex12 = round(Integer, changeInd3D(nHalf,m,l,n,m,l) + subStencil3D(2,1,1,Ind_relative));
+# for  x = any,  y = ymax  z = zmax
+    (Row, Col, Val) = createIndices(Ind[2:end-1,end,end][:],
+                                    Indices[19][:], (Values[19]*Entries[19])[:]);
+
+    rowAG = vcat(rowAG,Row);
+    colAG = vcat(colAG,Col);
+    valAG = vcat(valAG,Val);
+
+#################################################################################
+############## Now we incorporate the corners  ##################################
+#################################################################################
+
+# indcorner1 = round(Integer, changeInd3D(1,1,1,n,m,l) + Ind_relative[2:3,2:3,2:3][:]);
+    (Row, Col, Val) = createIndices(Ind[1,1,1],
+                                    Indices[20][:], (Values[20]*Entries[20])[:]);
+
+    rowAG = vcat(rowAG,Row)
+    colAG = vcat(colAG,Col)
+    valAG = vcat(valAG,Val)
+# indcorner2 = round(Integer, changeInd3D(n,1,1,n,m,l) + Ind_relative[1:2,2:3,2:3][:]);
+    (Row, Col, Val) = createIndices(Ind[end,1,1],
+                                    Indices[21][:], (Values[21]*Entries[21])[:]);
+
+    rowAG = vcat(rowAG,Row)
+    colAG = vcat(colAG,Col)
+    valAG = vcat(valAG,Val)
+# indcorner3 = round(Integer, changeInd3D(1,m,1,n,m,l) + Ind_relative[2:3,1:2,2:3][:]);
+    (Row, Col, Val) = createIndices(Ind[1,end,1],
+                                    Indices[22][:], (Values[22]*Entries[22])[:]);
+
+    rowAG = vcat(rowAG,Row)
+    colAG = vcat(colAG,Col)
+    valAG = vcat(valAG,Val)
+# indcorner4 = round(Integer, changeInd3D(n,m,1,n,m,l) + Ind_relative[1:2,1:2,2:3][:]);
+    (Row, Col, Val) = createIndices(Ind[end,end,1],
+                                    Indices[23][:], (Values[23]*Entries[23])[:]);
+
+    rowAG = vcat(rowAG,Row)
+    colAG = vcat(colAG,Col)
+    valAG = vcat(valAG,Val)
+# indcorner5 = round(Integer, changeInd3D(1,1,l,n,m,l) + Ind_relative[2:3,2:3,1:2][:]);
+    (Row, Col, Val) = createIndices(Ind[1,1,end],
+                                    Indices[24][:], (Values[24]*Entries[24])[:]);
+
+    rowAG = vcat(rowAG,Row)
+    colAG = vcat(colAG,Col)
+    valAG = vcat(valAG,Val)
+# indcorner6 = round(Integer, changeInd3D(n,1,l,n,m,l) + Ind_relative[1:2,2:3,1:2][:]);
+    (Row, Col, Val) = createIndices(Ind[end,1,end],
+                                    Indices[25][:], (Values[25]*Entries[25])[:]);
+
+    rowAG = vcat(rowAG,Row)
+    colAG = vcat(colAG,Col)
+    valAG = vcat(valAG,Val)
+# indcorner7 = round(Integer, changeInd3D(1,m,l,n,m,l) + Ind_relative[2:3,1:2,1:2][:]);
+    (Row, Col, Val) = createIndices(Ind[1,end,end],
+                                    Indices[26][:], (Values[26]*Entries[26])[:]);
+
+    rowAG = vcat(rowAG,Row)
+    colAG = vcat(colAG,Col)
+    valAG = vcat(valAG,Val)
+# indcorner8 = round(Integer, changeInd3D(n,m,l,n,m,l) + Ind_relative[1:2,1:2,1:2][:]);
+    (Row, Col, Val) = createIndices(Ind[end,end,end],
+                                    Indices[27][:], (Values[27]*Entries[27])[:]);
+
+    rowAG = vcat(rowAG,Row)
+    colAG = vcat(colAG,Col)
+    valAG = vcat(valAG,Val)
+
+
+
+    AG = sparse(rowAG,colAG,valAG);
+
+    return AG;
 end

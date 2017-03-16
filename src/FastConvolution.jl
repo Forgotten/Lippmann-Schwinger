@@ -256,7 +256,7 @@ end
 
 function sampleGConv(k,X,Y,indS, fastconv::FastM)
     # function to sample the Green's function at frequency k
-    # using convolution 
+    # using convolution
 
   #   R  = SharedArray(Float64, length(indS), length(X))
   #   Xshared = SharedArray(X)
@@ -1828,7 +1828,7 @@ end
 
 
 function buildSparseAGConv( k::Float64,X::Array{Float64,1},Y::Array{Float64,1},
-                            fastconv::FastM, n::Int64 ,m::Int64; 
+                            fastconv::FastM, n::Int64 ,m::Int64;
                             method::String = "normal")
 # function that build the sparsigying preconditioner
 
@@ -1924,7 +1924,7 @@ function buildSparseAG3D(k::Float64,X::Array{Float64,1},Y::Array{Float64,1},
 # function that build the sparsigying preconditioner
 
 
-  
+
     Entries = entriesSparseG3D(k,X,Y,Z,D0, n ,m, l);
     Ind = reshape(collect(1:n*m*l),n,m,l);
 

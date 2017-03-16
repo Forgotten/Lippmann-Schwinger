@@ -8,42 +8,45 @@ type FastDualDownSampled
     Fast:: FastMslowDual
     n  :: Int64
     m  :: Int64
-    downsample :: Int64
+    # downsampling factor in each dimension
+    downsampleX :: Int64
+    downsampleY :: Int64
     # Sampling Matrix
     S :: SparseMatrixCSC{Float64,Int64}
 
-    function FastDualDownSampled(Fast, downsample)
+    function FastDualDownSampled(Fast, downsampleX, downsampleY)
         # Building the Sampling matrix
-        index1 = 1:downsample:Fast.n
-        index2 = 1:downsample:Fast.m
+        index1 = 1:downsampleX:Fast.n
+        index2 = 1:downsampleY:Fast.m
         Sindex = spzeros(n,m)
-        for ii = 0:round(Integer,(n-1)/downsample)
-            for jj = 0:round(Integer,(m-1)/downsample)
-                Sindex[1+ii*downsample,1+jj*downsample ] = 1
+        for ii = 0:round(Integer,(n-1)/downsampleX)
+            for jj = 0:round(Integer,(m-1)/downsampleY)
+                Sindex[1+ii*downsampleX,1+jj*downsampleY ] = 1
             end
         end
 
         index = find(Sindex[:])
         S = speye(n*m, n*m)
         Sampling = S[index,:];
-        return new( Fast, Fast.n, Fast.m, downsample,Sampling)
+        return new( Fast, Fast.n, Fast.m, downsampleX, downsampleY,Sampling)
     end
 end
-
 
 import Base.*
 
 function *(M::FastDualDownSampled, b::Array{Complex128,1})
-    knots = (collect(1:M.downsample:M.n), collect(1:M.downsample:M.m))
-    nDown = round(Integer, (M.n-1)/M.downsample +1)
-    mDown = round(Integer, (M.m-1)/M.downsample +1)
+    knots = (collect(1:M.downsampleX:M.n), collect(1:M.downsampleY:M.m))
+    nDown = round(Integer, (M.n-1)/M.downsampleX +1)
+    mDown = round(Integer, (M.m-1)/M.downsampleY +1)
     B = reshape(b, nDown,mDown);
 
     itp_real = interpolate(real(B), BSpline(Quadratic(Reflect())), OnGrid())
     itp_imag = interpolate(imag(B), BSpline(Quadratic(Reflect())), OnGrid())
 
-    interpU =     itp_real[collect(M.downsample:M.n+M.downsample-1)/M.downsample,collect(M.downsample:M.m+M.downsample-1)/M.downsample ] +
-              1im*itp_imag[collect(M.downsample:M.n+M.downsample-1)/M.downsample,collect(M.downsample:M.m+M.downsample-1)/M.downsample];
+    interpU =     itp_real[collect(M.downsampleX:M.n+M.downsampleX-1)/M.downsampleX,
+                           collect(M.downsampleY:M.m+M.downsampleY-1)/M.downsampleY] +
+              1im*itp_imag[collect(M.downsampleX:M.n+M.downsampleX-1)/M.downsampleX,
+                           collect(M.downsampleY:M.m+M.downsampleY-1)/M.downsampleY];
 
     u = M.Fast*interpU[:]
 
