@@ -311,7 +311,7 @@ end
 #     return Gc
 # end
 
-
+## Parallel functions to sample the Kernel
 
 @everywhere function myrange(q::SharedArray)
     idx = indexpids(q)
@@ -378,6 +378,10 @@ end
       end
     end
 end
+
+##################################################################################
+### Routines to sample compute the Sparsified version of the matrices
+
 
 function entriesSparseA(k,X,Y,D0, n ,m)
   # we need to have an even number of points

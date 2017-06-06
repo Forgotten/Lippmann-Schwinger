@@ -51,7 +51,7 @@ fastconv = buildFastConvolution(x,y,h,k,nu, quadRule = "Greengard_Vico");
 @time Mapproxsp = As + k^2*(buildSparseAG(k,X,Y,D0, n ,m)*spdiagm(nu(X,Y)));
 
 # defining the preconditioner
-precond = SparsifyingPreconditioner(Mapproxsp, As)
+precond = SparsifyingPreconditioner(Mapproxsp, As)#, solverType="MKLPardiso")
 
 # building the RHS from the incident field
 u_inc = exp(k*im*X);

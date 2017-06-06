@@ -1,7 +1,7 @@
-# Helper functions 
+# Helper functions
 
 
-# reference Helmholtz solution for a centered Gaussian 
+# reference Helmholtz solution for a centered Gaussian
 @inline function solRefHelmholtz(x::Array{Float64,1},y::Array{Float64,1},z::Array{Float64,1}, sigma::Float64, k::Float64)
   r  = sqrt( x.^2 + y.^2 + z.^2)
   u  = (exp(-sigma^2*k^2/2)./(4*pi.*r)).*(real( exp(-1im.*k.*r).*erf( (2*sigma^2*1im*k - 2.*r)./(2*sqrt(2*sigma^2) ) )) - 1im*sin(k.*r))
@@ -22,6 +22,8 @@ end
     return (-1 + exp(1im*L*k)*( cos(L*s) - (1im*k*L*sinc(L*s/pi)) ))/( (k^2 - s^2))
 end
 
+
+# This is Not used in the release version 
 type changeVariable
     coef::Array{Float64,1}
     order::Int64
@@ -42,7 +44,7 @@ end
 
 @inline function changeVar(changeVariable, x)
     # function for the change of variable to integrate the smoth cut-off
-    # the derivative at 0 is zero and at delta is equal to 1. 
+    # the derivative at 0 is zero and at delta is equal to 1.
     xInt = x.*(x.<changeVariable.delta)
     powInt = copy(xInt)
     ans = zeros(xInt)
@@ -57,4 +59,3 @@ end
 
     return ans
 end
-
