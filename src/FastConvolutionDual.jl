@@ -1,4 +1,4 @@
-# function to build the fast application of the dual Lippmann-Schwinger equation 
+# function to build the fast application of the dual Lippmann-Schwinger equation
 # we suppose u(x) = \int_D G(x,y) \sigma(y) dy
 # and we solve ( \Delta + omega^2(1+q)) u = - omega^2q u^{inc}
 
@@ -23,6 +23,13 @@ type FastMDual
 end
 
 import Base.*
+import Base.A_mul_B!
+import Base.size
+
+function size(M::FastMDual, dim::Int64)
+  # function to returns the size of the underliying matrix (M.m*M.n)^2
+  return M.m*M.n
+end
 
 function *(M::FastMDual, b::Array{Complex128,1})
     # function to overload the applyication of
@@ -30,6 +37,18 @@ function *(M::FastMDual, b::Array{Complex128,1})
     # dummy function to call fastconvolution
     return fastconvolution(M,b)
 end
+
+function A_mul_B!(Y,
+                  M::FastMDual,
+                  V)
+    # in place matrix matrix multiplication
+    @assert(size(Y) == size(V))
+    # print(size(V))
+    for ii = 1:size(V,2)
+        Y[:,ii] = M*V[:,ii]
+    end
+end
+
 
 
 @inline function fastconvolution(M::FastMDual, b::Array{Complex128,1})
@@ -39,7 +58,7 @@ end
     # computing omega^2 nu G*(b)
     B = M.omega^2*(M.nu.*FFTconvolution(M,b))
 
-    # returning b + G*(b nu)
+    # returning -b + omega^2(nu G*b)
     return (-b + B[:])
 end
 
@@ -78,7 +97,7 @@ end
       BExt[1:M.n,1:M.m]= reshape(M.nu.*b,M.n,M.m) ;
 
       # Fourier Transform
-      BFft = fftshift(fft(BExt)) 
+      BFft = fftshift(fft(BExt))
      # Component-wise multiplication
       BFft = M.GFFT.*BFft
       # Inverse Fourier Transform
@@ -122,7 +141,7 @@ function buildFastConvolutionDual(x::Array{Float64,1},y::Array{Float64,1},
         KX = (2*pi/Lp)*repmat(kx, 1, 4*m);
         KY = (2*pi/Lp)*repmat(ky', 4*n,1);
 
-        S = sqrt(KX.^2 + KY.^2);
+        S = sqrt.(KX.^2 + KY.^2);
 
         GFFT = Gtruncated2D(L, k, S)
         return FastMDual(GFFT, nu(X,Y), 4*n, 4*m,
@@ -134,7 +153,7 @@ function buildFastConvolutionDual(x::Array{Float64,1},y::Array{Float64,1},
         # KX = (2*pi/Lp)*repmat(kx, 1, 4*m-3);
         # KY = (2*pi/Lp)*repmat(ky', 4*n-3,1);
 
-        # S = sqrt(KX.^2 + KY.^2);
+        # S = sqrt.(KX.^2 + KY.^2);
 
         # GFFT = Gtruncated2D(L, k, S)
 
@@ -147,7 +166,7 @@ function buildFastConvolutionDual(x::Array{Float64,1},y::Array{Float64,1},
         KX = (2*pi/Lp)*repmat( kx, 1,4*m);
         KY = (2*pi/Lp)*repmat(ky',4*n,  1);
 
-        S = sqrt(KX.^2 + KY.^2);
+        S = sqrt.(KX.^2 + KY.^2);
 
         GFFT = Gtruncated2D(L, k, S)
 
@@ -307,8 +326,8 @@ function buildGSparseAandG(k::Float64,X::Array{Float64,1},Y::Array{Float64,1},
 end
 
 
-function createIndices(row::Array{Int64,1}, col::Array{Int64,1}, 
-                       valA::Array{Complex128,1}, 
+function createIndices(row::Array{Int64,1}, col::Array{Int64,1},
+                       valA::Array{Complex128,1},
                        valG::Array{Complex128,2}, nu::Array{Float64,1})
   # function to create the indices for a sparse matrix
   @assert length(col) == length(valA)
@@ -321,8 +340,8 @@ function createIndices(row::Array{Int64,1}, col::Array{Int64,1},
   Col = kron(ones(Int64,mm), col) + Row;
   Val = nu[Col].*(kron(ones(Int64,mm), valA))
 
-  # multiplying by the blocks of G. 
-  for ii = 1:mm 
+  # multiplying by the blocks of G.
+  for ii = 1:mm
     Val[(ii-1)*ll+1:ii*ll] = (Val[(ii-1)*ll+1:ii*ll].')*valG
   end
 
@@ -330,8 +349,8 @@ function createIndices(row::Array{Int64,1}, col::Array{Int64,1},
   return (Row,Col,Val)
 end
 
-function createIndices(row::Int64, col::Array{Int64,1}, 
-                       valA::Array{Complex128,1}, 
+function createIndices(row::Int64, col::Array{Int64,1},
+                       valA::Array{Complex128,1},
                        valG::Array{Complex128,2}, nu::Array{Float64,1})
 
   @assert length(col) == length(valA)
@@ -345,8 +364,8 @@ function createIndices(row::Int64, col::Array{Int64,1},
 
   print(size(Val))
 
-  # multiplying by the blocks of G. 
-  for ii = 1:mm 
+  # multiplying by the blocks of G.
+  for ii = 1:mm
     Val[(ii-1)*ll+1:ii*ll] = (Val[(ii-1)*ll+1:ii*ll].')*valG
   end
 

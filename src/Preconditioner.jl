@@ -39,6 +39,7 @@ end
 
 # Encapsulation of the preconditioner in order to use preconditioned GMRES
 import Base.\
+import Base.A_ldiv_B!
 
 function \(M::SparsifyingPreconditioner, b::Array{Complex128,1})
     # we apply the Sparsifying preconditioner
@@ -48,6 +49,73 @@ function \(M::SparsifyingPreconditioner, b::Array{Complex128,1})
     elseif M.solverType == "MKLPardiso"
         set_phase!(M.MspInv, 33)
         u = zeros(Complex128,length(rhs),1)
+        pardiso(M.MspInv, u, M.Msp, rhs)
+    end
+end
+
+# function A_ldiv_B!(M::SparsifyingPreconditioner, v)
+# # we apply the Sparsifying preconditioner
+#     rhs = (M.As*v)
+#     if M.solverType == "UMPFACK"
+#         v =  M.MspInv\rhs
+#     elseif M.solverType == "MKLPardiso"
+#         set_phase!(M.MspInv, 33)
+#         v = zeros(Complex128,length(rhs),1)
+#         pardiso(M.MspInv, v, M.Msp, rhs)
+#     end
+# end
+
+function A_ldiv_B!(M::SparsifyingPreconditioner, v::SubArray{Complex{Float64},1,Array{Complex{Float64},2}})
+    # we apply the Sparsifying preconditioner
+    rhs = (M.As*v)
+    if M.solverType == "UMPFACK"
+        v[:] =  M.MspInv\rhs
+    elseif M.solverType == "MKLPardiso"
+        set_phase!(M.MspInv, 33)
+        #v = zeros(Complex128,length(rhs),1)
+        pardiso(M.MspInv, v, M.Msp, rhs)
+    end
+end
+
+# function A_ldiv_B!(u::SubArray{Complex{Float64},1,Array{Complex{Float64},2}},
+#                    M::SparsifyingPreconditioner,
+#                    v::SubArray{Complex{Float64},1,Array{Complex{Float64},2}})
+# # we apply the Sparsifying preconditioner
+#     @assert length(u) == length(v)
+#     rhs = (M.As*v)
+#     if M.solverType == "UMPFACK"
+#         u =  M.MspInv\rhs
+#     elseif M.solverType == "MKLPardiso"
+#         set_phase!(M.MspInv, 33)
+#         #u = zeros(Complex128,length(rhs),1)
+#         pardiso(M.MspInv, u, M.Msp, rhs)
+#     end
+# end
+
+# function A_ldiv_B!(M::SparsifyingPreconditioner, v)
+#     # we apply the Sparsifying preconditioner
+#     rhs = (M.As*v)
+#     if M.solverType == "UMPFACK"
+#         v =  M.MspInv\rhs
+#     elseif M.solverType == "MKLPardiso"
+#         set_phase!(M.MspInv, 33)
+#         v = zeros(Complex128,length(rhs),1)
+#         pardiso(M.MspInv, v, M.Msp, rhs)
+#     end
+#     println("hey!")
+# end
+
+function A_ldiv_B!(u,
+                   M::SparsifyingPreconditioner,
+                   v)
+# we apply the Sparsifying preconditioner
+    @assert length(u) == length(v)
+    rhs = (M.As*v)
+    if M.solverType == "UMPFACK"
+        u =  M.MspInv\rhs
+    elseif M.solverType == "MKLPardiso"
+        set_phase!(M.MspInv, 33)
+        #u = zeros(Complex128,length(rhs),1)
         pardiso(M.MspInv, u, M.Msp, rhs)
     end
 end

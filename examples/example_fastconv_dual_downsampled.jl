@@ -1,7 +1,5 @@
 # small scrip to compute the solution of Lipman Schinwer equation
-# We test the types introduced in FastConvolution.jl
-# we test that the application is fast and that the construction
-# is performed fast.
+# In this case we use the donwsampled function using linear interpolation
 
 
 using PyPlot
@@ -35,8 +33,6 @@ Y = repmat(y', n,1)[:];
 # We use the modified quadrature in Duan and Rohklin
 (ppw,D) = referenceValsTrapRule();
 D0 = D[1];
-
-downsample=4;
 
 window(y,alpha) = 1*(abs(y).<=alpha/2) + (abs(y).>alpha/2).*(abs(y).<alpha).*
                      exp(2*exp(-0.5*alpha./(abs(y)-alpha/2))./
@@ -73,17 +69,21 @@ println(info[2].residuals[:])
 using Interpolations
 
 
-fastconvSlowDualDown = FastDualDownSampled(fastconvSlowDual, downsample)
+
+downsampleX = 16
+downsampleY = 2
+
+fastconvSlowDualDown = FastDualDownSampled(fastconvSlowDual,
+                                           downsampleX, downsampleY)
 
 
-
-index1 = 1:downsample:n
-index2 = 1:downsample:m
+index1 = 1:downsampleX:n
+index2 = 1:downsampleY:m
 
 Sindex = spzeros(n,m)
-for ii = 0:round(Integer,(n-1)/downsample)
-    for jj = 0:round(Integer,(m-1)/downsample)
-        Sindex[1+ii*downsample,1+jj*downsample ] = 1
+for ii = 0:round(Integer,(n-1)/downsampleX)
+    for jj = 0:round(Integer,(m-1)/downsampleY)
+        Sindex[1+ii*downsampleX,1+jj*downsampleY] = 1
     end
 end
 
@@ -97,27 +97,27 @@ sigmaSlowDown = zeros(Complex128, size(Sampling)[1])
 println(info[2].residuals[:])
 
 
-U_Window = reshape(uslowWindow, n,m)
-u_downsampled = Sampling*uslowWindow;
 
-sigmaDownsampled = reshape(sigmaSlowDown, round(Integer,(n-1)/downsample) +1, round(Integer,(m-1)/downsample) +1)
+sigmaDownsampled = reshape(sigmaSlowDown, round(Integer,(n-1)/downsampleX) +1,
+                          round(Integer,(m-1)/downsampleY) +1)
 
 figure(17);
 clf();
-imshow(real(sigmaDownsampled))
+imshow(real(sigmaDownsampled)); colorbar();
 title("sigma Slow in coarse mesh")
 
 
-knots = (collect(1:downsample:n), collect(1:downsample:m))
+knots = (collect(1:downsampleX:n), collect(1:downsampleY:m))
 
 itp_real = interpolate(knots, real(sigmaDownsampled), Gridded(Linear()))
 itp_imag = interpolate(knots, imag(sigmaDownsampled), Gridded(Linear()))
 
-interpsigma = itp_real[collect(1:n),collect(1:m) ] + 1im*itp_imag[collect(1:n),collect(1:m) ]
+interpsigma = itp_real[collect(1:n),collect(1:m) ] 
+              + 1im*itp_imag[collect(1:n),collect(1:m) ]
 
 figure(15);
 clf();
-imshow(real(interpsigma))
+imshow(real(interpsigma)); colorbar();
 title("interpolated sigma slow")
 
 
@@ -128,11 +128,3 @@ clf();
 imshow(real(interpsigma - reshape(sigmaSlow,n,m))/normSigmaSlow)
 colorbar()
 title("relative error");
-
-FastDown =  FastDownSampled(fastconvslowWindow, downsample)
-
-uDown = zeros(Complex128, round(Integer,(m-1)/downsample +1).^2)
-
-@time info =  gmres!(uDown, FastDown, Sampling*rhsslowWindow )
-
-println(info[2].residuals[:])

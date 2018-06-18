@@ -19,6 +19,15 @@ type FastMslow
     e ::Array{Float64,1}
 end
 
+import Base.*
+import Base.A_mul_B!
+import Base.eltype
+import Base.size
+
+function size(M::FastMslow, dim::Int64)
+  @assert dim<3 && dim>0
+    return M.n*M.m
+end
 
 function *(M::FastMslow, b::Array{Complex128,1})
     # function to overload the applyication of
@@ -40,6 +49,17 @@ function *(M::FastMslow, b::Array{Complex128,1})
     B = M.omega^2*(BExt[M.n:2*M.n-1, M.m:2*M.m-1]);
 
     return (b + (exp(-1im*M.omega*(M.e[1]*M.x + M.e[2]*M.y)).*(B[:])))
+end
+
+function A_mul_B!(Y,
+                  M::FastMslow,
+                  V)
+    # in place matrix matrix multiplication
+    @assert(size(Y) == size(V))
+    # print(size(V))
+    for ii = 1:size(V,2)
+        Y[:,ii] = M*V[:,ii]
+    end
 end
 
 # # TO DO: add more parameters for the window in here

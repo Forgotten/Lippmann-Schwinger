@@ -24,6 +24,10 @@ type FastM
 end
 
 import Base.*
+import Base.A_mul_B!
+import Base.eltype
+import Base.size
+import Base.issymmetric
 
 function *(M::FastM, b::Array{Complex128,1})
     # function to overload the applyication of
@@ -32,7 +36,55 @@ function *(M::FastM, b::Array{Complex128,1})
     return fastconvolution(M,b)
 end
 
+# function A_mul_B!(Y::Array{Complex128,1},M::FastM, V::Array{Complex128,1})
+#     # in place matrix matrix multiplication
+#     assert(size(Y) == size(V))
+#     Y = fastconvolution(M,V)
+# end
 
+# function A_mul_B!(Y::SubArray{Complex{Float64},1,Array{Complex{Float64},2}},
+#                   M::FastM,
+#                   V::SubArray{Complex{Float64},1,Array{Complex{Float64},2}})
+#     # in place matrix matrix multiplication
+#     @assert(size(Y) == size(V))
+#     # print(size(V))
+#     for ii = 1:size(V,2)
+#         Y[:,ii] = M*V[:,ii]
+#     end
+# end
+
+# function A_mul_B!(Y::Array{Complex128,1},
+#                   M::FastM,
+#                   V::SubArray{Complex{Float64},1,Array{Complex{Float64},2}})
+#     # in place matrix matrix multiplication
+#     @assert(size(Y)[1] == size(V)[1])
+#     # print(size(V))
+#     Y = M*V[:];
+
+# end
+
+function A_mul_B!(Y,
+                  M::FastM,
+                  V)
+    # in place matrix matrix multiplication
+    @assert(size(Y) == size(V))
+    # print(size(V))
+    for ii = 1:size(V,2)
+        Y[:,ii] = M*V[:,ii]
+    end
+end
+
+
+
+
+function size(M::FastM)
+    return (M.n*M.m,M.n*M.m,)
+end
+
+function size(M::FastM, dim::Int64)
+  @assert dim<3 && dim>0
+    return M.n*M.m
+end
 
 
 @inline function fastconvolution(M::FastM, b::Array{Complex128,1})
@@ -44,7 +96,7 @@ end
     if M.quadRule == "trapezoidal"
 
       #obtaining the middle index
-      indMiddle = round(Integer, M.n)
+      indMiddle = round.(Integer, M.n)
 
       # Allocate the space for the extended B
       BExt = zeros(Complex128,M.ne, M.me);
@@ -202,7 +254,7 @@ function buildFastConvolution(x::Array{Float64,1},y::Array{Float64,1},
         KX = (2*pi/Lp)*repmat( kx, 1,4*m);
         KY = (2*pi/Lp)*repmat(ky',4*n,  1);
 
-        S = sqrt(KX.^2 + KY.^2);
+        S = sqrt.(KX.^2 + KY.^2);
 
         GFFT = Gtruncated2D(L, k, S)
 
@@ -239,7 +291,7 @@ end
     @parallel for i = 1:length(indS)
       #for i = 1:length(indS)
       ii = indS[i]
-      R[i,:]  = sqrt( (Xshared-Xshared[ii]).^2 + (Yshared-Yshared[ii]).^2);
+      R[i,:]  = sqrt.( (Xshared-Xshared[ii]).^2 + (Yshared-Yshared[ii]).^2);
       R[i,ii] = 1;
     end
   end
@@ -398,7 +450,7 @@ function entriesSparseA(k,X,Y,D0, n ,m)
 
   # computing the entries for the interior
   # extracting indices at the center of the stencil
-  indVol = round(Integer, n*(m-1)/2 + (n+1)/2 + IndRelative[:] );
+  indVol = round.(Integer, n*(m-1)/2 + (n+1)/2 + IndRelative[:] );
   # extracting only the far field indices
   indVolC = setdiff(collect(1:N),indVol);
   GSampled = sampleG(k,X,Y,indVol, D0)[:,indVolC];
@@ -411,7 +463,7 @@ function entriesSparseA(k,X,Y,D0, n ,m)
   # this is for the edges
 
   # for  x = xmin, y = 0
-  indFz1 = round(Integer, n*(m-1)/2 +1 + IndRelative[:,2:3][:]);
+  indFz1 = round.(Integer, n*(m-1)/2 +1 + IndRelative[:,2:3][:]);
   indC = setdiff(collect(1:N),indFz1);
   GSampled = sampleG(k,X,Y,indFz1, D0)[:,indC ];
   (U,s,V) = svd(GSampled);
@@ -419,7 +471,7 @@ function entriesSparseA(k,X,Y,D0, n ,m)
   push!(Indices, IndRelative[:,2:3][:]); #'
 
   # for  x = xmax, y = 0
-  indFz2 = round(Integer, n*(m-1)/2 + IndRelative[:,1:2][:]);
+  indFz2 = round.(Integer, n*(m-1)/2 + IndRelative[:,1:2][:]);
   indC = setdiff(collect(1:N),indFz2);
   GSampled = sampleG(k,X,Y,indFz2, D0)[:,indC ];
   (U,s,V) = svd(GSampled);
@@ -427,7 +479,7 @@ function entriesSparseA(k,X,Y,D0, n ,m)
   push!(Indices,IndRelative[:,1:2][:]); #'
 
   # for  y = ymin, x = 0
-  indFx1 = round(Integer, (n+1)/2 + IndRelative[2:3,:][:]);
+  indFx1 = round.(Integer, (n+1)/2 + IndRelative[2:3,:][:]);
   indC = setdiff(collect(1:N),indFx1);
   GSampled = sampleG(k,X,Y,indFx1, D0)[:,indC ];
   (U,s,V) = svd(GSampled);
@@ -435,7 +487,7 @@ function entriesSparseA(k,X,Y,D0, n ,m)
   push!(Indices, IndRelative[2:3,:][:]); #'
 
   # for  y = ymin, x = 0
-  indFx2 = round(Integer, N - (n+1)/2 + IndRelative[1:2,:][:]);
+  indFx2 = round.(Integer, N - (n+1)/2 + IndRelative[1:2,:][:]);
   indC = setdiff(collect(1:N),indFx2);
   GSampled = sampleG(k,X,Y,indFx2, D0)[:,indC ];
   (U,s,V) = svd(GSampled);
@@ -443,10 +495,10 @@ function entriesSparseA(k,X,Y,D0, n ,m)
   push!(Indices,IndRelative[1:2,:][:]); #'
 
   # For the corners
-  indcorner1 = round(Integer, 1       + IndRelative[2:3,2:3][:]);
-  indcorner2 = round(Integer, n       + IndRelative[2:3,1:2][:]);
-  indcorner3 = round(Integer, n*m-n+1 + [0, 1,-n,-n+1]);
-  indcorner4 = round(Integer, n*m     + [0,-1,-n,-n-1]);
+  indcorner1 = round.(Integer, 1       + IndRelative[2:3,2:3][:]);
+  indcorner2 = round.(Integer, n       + IndRelative[2:3,1:2][:]);
+  indcorner3 = round.(Integer, n*m-n+1 + [0, 1,-n,-n+1]);
+  indcorner4 = round.(Integer, n*m     + [0,-1,-n,-n-1]);
 
   indC = setdiff(collect(1:N),indcorner1);
   GSampled = sampleG(k,X,Y,indcorner1, D0)[:,indC ];
@@ -497,7 +549,7 @@ function entriesSparseAConv(k,X,Y,fastconv::FastM, n ,m)
 
   # computing the entries for the interior
   # extracting indices at the center of the stencil
-  indVol = round(Integer, n*(m-1)/2 + (n+1)/2 + IndRelative[:] );
+  indVol = round.(Integer, n*(m-1)/2 + (n+1)/2 + IndRelative[:] );
   # extracting only the far field indices
   indVolC = setdiff(collect(1:N),indVol);
   GSampled = sampleGConv(k,X,Y,indVol, fastconv)[:,indVolC];
@@ -510,7 +562,7 @@ function entriesSparseAConv(k,X,Y,fastconv::FastM, n ,m)
   # this is for the edges
 
   # for  x = xmin, y = 0
-  indFz1 = round(Integer, n*(m-1)/2 +1 + IndRelative[:,2:3][:]);
+  indFz1 = round.(Integer, n*(m-1)/2 +1 + IndRelative[:,2:3][:]);
   indC = setdiff(collect(1:N),indFz1);
   GSampled = sampleGConv(k,X,Y,indFz1, fastconv)[:,indC ];
   (U,s,V) = svd(GSampled);
@@ -518,7 +570,7 @@ function entriesSparseAConv(k,X,Y,fastconv::FastM, n ,m)
   push!(Indices, IndRelative[:,2:3][:]); #'
 
   # for  x = xmax, y = 0
-  indFz2 = round(Integer, n*(m-1)/2 + IndRelative[:,1:2][:]);
+  indFz2 = round.(Integer, n*(m-1)/2 + IndRelative[:,1:2][:]);
   indC = setdiff(collect(1:N),indFz2);
   GSampled = sampleGConv(k,X,Y,indFz2, fastconv)[:,indC ];
   (U,s,V) = svd(GSampled);
@@ -526,7 +578,7 @@ function entriesSparseAConv(k,X,Y,fastconv::FastM, n ,m)
   push!(Indices,IndRelative[:,1:2][:]); #'
 
   # for  y = ymin, x = 0
-  indFx1 = round(Integer, (n+1)/2 + IndRelative[2:3,:][:]);
+  indFx1 = round.(Integer, (n+1)/2 + IndRelative[2:3,:][:]);
   indC = setdiff(collect(1:N),indFx1);
   GSampled = sampleGConv(k,X,Y,indFx1, fastconv)[:,indC ];
   (U,s,V) = svd(GSampled);
@@ -534,7 +586,7 @@ function entriesSparseAConv(k,X,Y,fastconv::FastM, n ,m)
   push!(Indices, IndRelative[2:3,:][:]); #'
 
   # for  y = ymin, x = 0
-  indFx2 = round(Integer, N - (n+1)/2 + IndRelative[1:2,:][:]);
+  indFx2 = round.(Integer, N - (n+1)/2 + IndRelative[1:2,:][:]);
   indC = setdiff(collect(1:N),indFx2);
   GSampled = sampleGConv(k,X,Y,indFx2, fastconv)[:,indC ];
   (U,s,V) = svd(GSampled);
@@ -542,10 +594,10 @@ function entriesSparseAConv(k,X,Y,fastconv::FastM, n ,m)
   push!(Indices,IndRelative[1:2,:][:]); #'
 
   # For the corners
-  indcorner1 = round(Integer, 1       + IndRelative[2:3,2:3][:]);
-  indcorner2 = round(Integer, n       + IndRelative[2:3,1:2][:]);
-  indcorner3 = round(Integer, n*m-n+1 + [0, 1,-n,-n+1]);
-  indcorner4 = round(Integer, n*m     + [0,-1,-n,-n-1]);
+  indcorner1 = round.(Integer, 1       + IndRelative[2:3,2:3][:]);
+  indcorner2 = round.(Integer, n       + IndRelative[2:3,1:2][:]);
+  indcorner3 = round.(Integer, n*m-n+1 + [0, 1,-n,-n+1]);
+  indcorner4 = round.(Integer, n*m     + [0,-1,-n,-n-1]);
 
   indC = setdiff(collect(1:N),indcorner1);
   GSampled = sampleGConv(k,X,Y,indcorner1, fastconv)[:,indC ];
@@ -606,7 +658,7 @@ function entriesSparseA3D(k,X,Y,Z,D0, n ,m, l)
 
   # computing the entries for the interior
 
-  nHalf = round(Integer,n/2);
+  nHalf = round.(Integer,n/2);
   mHalf = round(Integer,m/2);
   lHalf = round(Integer,l/2);
 
@@ -1441,41 +1493,41 @@ function entriesSparseG(k::Float64,X::Array{Float64,1},Y::Array{Float64,1},
   N = n*m;
 
   # computing the entries for the interior
-  indVol = round(Integer, n*(m-1)/2 + (n+1)/2 + IndRelative[:] );
+  indVol = round.(Integer, n*(m-1)/2 + (n+1)/2 + IndRelative[:] );
   GSampled = sampleG(k,X,Y,indVol, D0)[:,indVol];
 
   push!(Entries,GSampled);
 
   # for  x = xmin, y = 0
-  indFz1 = round(Integer, n*(m-1)/2 +1 + [0,1,n,n+1,-n, -n+1]);
+  indFz1 = round.(Integer, n*(m-1)/2 +1 + [0,1,n,n+1,-n, -n+1]);
   GSampled = sampleG(k,X,Y,indFz1, D0)[:,indFz1];
 
   push!(Entries,GSampled);
 
   # for  x = xmax, y = 0
-  indFz2 = round(Integer, n*(m-1)/2 + [-1,0,n,n-1,-n, -n-1]);
+  indFz2 = round.(Integer, n*(m-1)/2 + [-1,0,n,n-1,-n, -n-1]);
   GSampled = sampleG(k,X,Y,indFz2, D0)[:,indFz2];
 
   push!(Entries,GSampled);
 
   # for  y = ymin, x = 0
-  indFx1 = round(Integer, (n+1)/2 + [-1,0,1,n,n+1, n-1]);
+  indFx1 = round.(Integer, (n+1)/2 + [-1,0,1,n,n+1, n-1]);
   GSampled = sampleG(k,X,Y,indFx1, D0)[:,indFx1];
 
   push!(Entries,GSampled);
 
 
   # for  y = ymin, x = 0
-  indFx2 = round(Integer, N - (n+1)/2 + [-1,0,1,-n,-n+1, -n-1]);
+  indFx2 = round.(Integer, N - (n+1)/2 + [-1,0,1,-n,-n+1, -n-1]);
   GSampled = sampleG(k,X,Y,indFx2, D0)[:,indFx2];
 
   push!(Entries,GSampled);
 
   # For the corners
-  indcorner1 = round(Integer, 1 + [0,1, n,n+1]);
-  indcorner2 = round(Integer, n + [0,-1, n,n-1]);
-  indcorner3 = round(Integer, n*m-n+1 + [0,1, -n,-n+1]);
-  indcorner4 = round(Integer, n*m + [0,-1, -n,-n-1]);
+  indcorner1 = round.(Integer, 1 + [0,1, n,n+1]);
+  indcorner2 = round.(Integer, n + [0,-1, n,n-1]);
+  indcorner3 = round.(Integer, n*m-n+1 + [0,1, -n,-n+1]);
+  indcorner4 = round.(Integer, n*m + [0,-1, -n,-n-1]);
 
   GSampled = sampleG(k,X,Y,indcorner1, D0)[:,indcorner1];
   push!(Entries,GSampled);
@@ -1514,41 +1566,41 @@ function entriesSparseGConv(k::Float64,X::Array{Float64,1},Y::Array{Float64,1},
   N = n*m;
 
   # computing the entries for the interior
-  indVol = round(Integer, n*(m-1)/2 + (n+1)/2 + IndRelative[:] );
+  indVol = round.(Integer, n*(m-1)/2 + (n+1)/2 + IndRelative[:] );
   GSampled = sampleGConv(k,X,Y,indVol, fastconv)[:,indVol];
 
   push!(Entries,GSampled);
 
   # for  x = xmin, y = 0
-  indFz1 = round(Integer, n*(m-1)/2 +1 + [0,1,n,n+1,-n, -n+1]);
+  indFz1 = round.(Integer, n*(m-1)/2 +1 + [0,1,n,n+1,-n, -n+1]);
   GSampled = sampleGConv(k,X,Y,indFz1, fastconv)[:,indFz1];
 
   push!(Entries,GSampled);
 
   # for  x = xmax, y = 0
-  indFz2 = round(Integer, n*(m-1)/2 + [-1,0,n,n-1,-n, -n-1]);
+  indFz2 = round.(Integer, n*(m-1)/2 + [-1,0,n,n-1,-n, -n-1]);
   GSampled = sampleGConv(k,X,Y,indFz2, fastconv)[:,indFz2];
 
   push!(Entries,GSampled);
 
   # for  y = ymin, x = 0
-  indFx1 = round(Integer, (n+1)/2 + [-1,0,1,n,n+1, n-1]);
+  indFx1 = round.(Integer, (n+1)/2 + [-1,0,1,n,n+1, n-1]);
   GSampled = sampleGConv(k,X,Y,indFx1, fastconv)[:,indFx1];
 
   push!(Entries,GSampled);
 
 
   # for  y = ymin, x = 0
-  indFx2 = round(Integer, N - (n+1)/2 + [-1,0,1,-n,-n+1, -n-1]);
+  indFx2 = round.(Integer, N - (n+1)/2 + [-1,0,1,-n,-n+1, -n-1]);
   GSampled = sampleGConv(k,X,Y,indFx2, fastconv)[:,indFx2];
 
   push!(Entries,GSampled);
 
   # For the corners
-  indcorner1 = round(Integer, 1 + [0,1, n,n+1]);
-  indcorner2 = round(Integer, n + [0,-1, n,n-1]);
-  indcorner3 = round(Integer, n*m-n+1 + [0,1, -n,-n+1]);
-  indcorner4 = round(Integer, n*m + [0,-1, -n,-n-1]);
+  indcorner1 = round.(Integer, 1 + [0,1, n,n+1]);
+  indcorner2 = round.(Integer, n + [0,-1, n,n-1]);
+  indcorner3 = round.(Integer, n*m-n+1 + [0,1, -n,-n+1]);
+  indcorner4 = round.(Integer, n*m + [0,-1, -n,-n-1]);
 
   GSampled = sampleGConv(k,X,Y,indcorner1, fastconv)[:,indcorner1];
   push!(Entries,GSampled);
@@ -1598,11 +1650,11 @@ function entriesSparseG3D(k::Float64,X::Array{Float64,1},Y::Array{Float64,1},
 
   # computing the entries for the interior
 
-  nHalf = round(Integer,n/2);
-  mHalf = round(Integer,m/2);
-  lHalf = round(Integer,l/2);
+  nHalf = round.(Integer,n/2);
+  mHalf = round.(Integer,m/2);
+  lHalf = round.(Integer,l/2);
 
-  indVol = round(Integer, changeInd3D(nHalf,mHalf,lHalf,n,m,l)+Ind_relative[:]);
+  indVol = round.(Integer, changeInd3D(nHalf,mHalf,lHalf,n,m,l)+Ind_relative[:]);
 
   GSampled = sampleG3D(k,X,Y,Z,indVol, D0)[:,indVol];
 
@@ -1610,55 +1662,55 @@ function entriesSparseG3D(k::Float64,X::Array{Float64,1},Y::Array{Float64,1},
 
 
   # for  x = xmin,  y = anything z = anything
-  indFx1 = round(Integer, changeInd3D(1,mHalf,lHalf,n,m,l) + Ind_relative[2:3,:,:][:] );
+  indFx1 = round.(Integer, changeInd3D(1,mHalf,lHalf,n,m,l) + Ind_relative[2:3,:,:][:] );
   GSampled = sampleG3D(k,X,Y,Z,indFx1, D0)[:,indFx1];
 
   push!(Entries,GSampled);
 
 
   # for  x = xmax, y = any z = any
-  indFxN = round(Integer, changeInd3D(n,mHalf,lHalf,n,m,l) + Ind_relative[1:2,:,:][:]);
+  indFxN = round.(Integer, changeInd3D(n,mHalf,lHalf,n,m,l) + Ind_relative[1:2,:,:][:]);
   GSampled = sampleG3D(k,X,Y,Z,indFxN, D0)[:,indFxN];
 
   push!(Entries,GSampled);
 
   # for  y = ymin, x = any z = any
-  indFy1 = round(Integer, changeInd3D(nHalf,1,lHalf,n,m,l) + Ind_relative[:,2:3,:][:] );
+  indFy1 = round.(Integer, changeInd3D(nHalf,1,lHalf,n,m,l) + Ind_relative[:,2:3,:][:] );
   GSampled = sampleG3D(k,X,Y,Z,indFy1, D0)[:,indFy1];
 
   push!(Entries,GSampled);
 
   # for  y = ymax, x = any z = any
-  indFyN = round(Integer, changeInd3D(nHalf,m,lHalf,n,m,l) + Ind_relative[:,1:2,:][:] );
+  indFyN = round.(Integer, changeInd3D(nHalf,m,lHalf,n,m,l) + Ind_relative[:,1:2,:][:] );
   GSampled = sampleG3D(k,X,Y,Z,indFyN, D0)[:,indFyN];
 
   push!(Entries,GSampled);
 
   # for  z = zmin, x = any y = any
-  indFz1 = round(Integer, changeInd3D(nHalf,mHalf,1,n,m,l) + Ind_relative[:,:,2:3][:] );
+  indFz1 = round.(Integer, changeInd3D(nHalf,mHalf,1,n,m,l) + Ind_relative[:,:,2:3][:] );
   GSampled = sampleG3D(k,X,Y,Z,indFz1, D0)[:,indFz1];
 
   push!(Entries,GSampled);
 
   # for  z = zmax, x = any y = any
-  indFzN = round(Integer, changeInd3D(nHalf,mHalf,l,n,m,l) + Ind_relative[:,:,1:2][:] );
+  indFzN = round.(Integer, changeInd3D(nHalf,mHalf,l,n,m,l) + Ind_relative[:,:,1:2][:] );
   GSampled = sampleG3D(k,X,Y,Z,indFzN, D0)[:,indFzN];
 
   push!(Entries,GSampled);
 
   # we need to incorporate the vertices
-  indvertex1  = round(Integer, changeInd3D(1,1,lHalf,n,m,l) + subStencil3D(3,3,2,Ind_relative));
-  indvertex2  = round(Integer, changeInd3D(n,1,lHalf,n,m,l) + subStencil3D(1,3,2,Ind_relative));
-  indvertex3  = round(Integer, changeInd3D(1,m,lHalf,n,m,l) + subStencil3D(3,1,2,Ind_relative));
-  indvertex4  = round(Integer, changeInd3D(n,m,lHalf,n,m,l) + subStencil3D(1,1,2,Ind_relative));
-  indvertex5  = round(Integer, changeInd3D(1,mHalf,1,n,m,l) + subStencil3D(3,2,3,Ind_relative));
-  indvertex6  = round(Integer, changeInd3D(n,mHalf,1,n,m,l) + subStencil3D(1,2,3,Ind_relative));
-  indvertex7  = round(Integer, changeInd3D(1,mHalf,l,n,m,l) + subStencil3D(3,2,1,Ind_relative));
-  indvertex8  = round(Integer, changeInd3D(n,mHalf,l,n,m,l) + subStencil3D(1,2,1,Ind_relative));
-  indvertex9  = round(Integer, changeInd3D(nHalf,1,1,n,m,l) + subStencil3D(2,3,3,Ind_relative));
-  indvertex10 = round(Integer, changeInd3D(nHalf,m,1,n,m,l) + subStencil3D(2,1,3,Ind_relative));
-  indvertex11 = round(Integer, changeInd3D(nHalf,1,l,n,m,l) + subStencil3D(2,3,1,Ind_relative));
-  indvertex12 = round(Integer, changeInd3D(nHalf,m,l,n,m,l) + subStencil3D(2,1,1,Ind_relative));
+  indvertex1  = round.(Integer, changeInd3D(1,1,lHalf,n,m,l) + subStencil3D(3,3,2,Ind_relative));
+  indvertex2  = round.(Integer, changeInd3D(n,1,lHalf,n,m,l) + subStencil3D(1,3,2,Ind_relative));
+  indvertex3  = round.(Integer, changeInd3D(1,m,lHalf,n,m,l) + subStencil3D(3,1,2,Ind_relative));
+  indvertex4  = round.(Integer, changeInd3D(n,m,lHalf,n,m,l) + subStencil3D(1,1,2,Ind_relative));
+  indvertex5  = round.(Integer, changeInd3D(1,mHalf,1,n,m,l) + subStencil3D(3,2,3,Ind_relative));
+  indvertex6  = round.(Integer, changeInd3D(n,mHalf,1,n,m,l) + subStencil3D(1,2,3,Ind_relative));
+  indvertex7  = round.(Integer, changeInd3D(1,mHalf,l,n,m,l) + subStencil3D(3,2,1,Ind_relative));
+  indvertex8  = round.(Integer, changeInd3D(n,mHalf,l,n,m,l) + subStencil3D(1,2,1,Ind_relative));
+  indvertex9  = round.(Integer, changeInd3D(nHalf,1,1,n,m,l) + subStencil3D(2,3,3,Ind_relative));
+  indvertex10 = round.(Integer, changeInd3D(nHalf,m,1,n,m,l) + subStencil3D(2,1,3,Ind_relative));
+  indvertex11 = round.(Integer, changeInd3D(nHalf,1,l,n,m,l) + subStencil3D(2,3,1,Ind_relative));
+  indvertex12 = round.(Integer, changeInd3D(nHalf,m,l,n,m,l) + subStencil3D(2,1,1,Ind_relative));
 
   GSampled = sampleG3D(k,X,Y,Z,indvertex1, D0)[:,indvertex1 ];
   push!(Entries,GSampled);
@@ -1702,14 +1754,14 @@ function entriesSparseG3D(k::Float64,X::Array{Float64,1},Y::Array{Float64,1},
 
 
   # Now we incorporate the corners
-  indcorner1 = round(Integer, changeInd3D(1,1,1,n,m,l) + Ind_relative[2:3,2:3,2:3][:]);
-  indcorner2 = round(Integer, changeInd3D(n,1,1,n,m,l) + Ind_relative[1:2,2:3,2:3][:]);
-  indcorner3 = round(Integer, changeInd3D(1,m,1,n,m,l) + Ind_relative[2:3,1:2,2:3][:]);
-  indcorner4 = round(Integer, changeInd3D(n,m,1,n,m,l) + Ind_relative[1:2,1:2,2:3][:]);
-  indcorner5 = round(Integer, changeInd3D(1,1,l,n,m,l) + Ind_relative[2:3,2:3,1:2][:]);
-  indcorner6 = round(Integer, changeInd3D(n,1,l,n,m,l) + Ind_relative[1:2,2:3,1:2][:]);
-  indcorner7 = round(Integer, changeInd3D(1,m,l,n,m,l) + Ind_relative[2:3,1:2,1:2][:]);
-  indcorner8 = round(Integer, changeInd3D(n,m,l,n,m,l) + Ind_relative[1:2,1:2,1:2][:]);
+  indcorner1 = round.(Integer, changeInd3D(1,1,1,n,m,l) + Ind_relative[2:3,2:3,2:3][:]);
+  indcorner2 = round.(Integer, changeInd3D(n,1,1,n,m,l) + Ind_relative[1:2,2:3,2:3][:]);
+  indcorner3 = round.(Integer, changeInd3D(1,m,1,n,m,l) + Ind_relative[2:3,1:2,2:3][:]);
+  indcorner4 = round.(Integer, changeInd3D(n,m,1,n,m,l) + Ind_relative[1:2,1:2,2:3][:]);
+  indcorner5 = round.(Integer, changeInd3D(1,1,l,n,m,l) + Ind_relative[2:3,2:3,1:2][:]);
+  indcorner6 = round.(Integer, changeInd3D(n,1,l,n,m,l) + Ind_relative[1:2,2:3,1:2][:]);
+  indcorner7 = round.(Integer, changeInd3D(1,m,l,n,m,l) + Ind_relative[2:3,1:2,1:2][:]);
+  indcorner8 = round.(Integer, changeInd3D(n,m,l,n,m,l) + Ind_relative[1:2,1:2,1:2][:]);
 
   GSampled = sampleG3D(k,X,Y,Z,indcorner1, D0)[:,indcorner1 ];
   push!(Entries,GSampled);
@@ -2001,7 +2053,7 @@ function buildSparseAG3D(k::Float64,X::Array{Float64,1},Y::Array{Float64,1},
 
 # we need to incorporate the vertices
 
-# indvertex1  = round(Integer, changeInd3D(1,1,lHalf,n,m,l) + subStencil3D(3,3,2,Ind_relative));
+# indvertex1  = round.(Integer, changeInd3D(1,1,lHalf,n,m,l) + subStencil3D(3,3,2,Ind_relative));
 # for  x = xmin,  y = ymin z = anything
     (Row, Col, Val) = createIndices(Ind[1,1,2:end-1][:],
                                     Indices[8][:], (Values[8]*Entries[8])[ :]);
@@ -2010,7 +2062,7 @@ function buildSparseAG3D(k::Float64,X::Array{Float64,1},Y::Array{Float64,1},
     colA = vcat(colA,Col);
     valA = vcat(valA,Val);
 
-# indvertex2  = round(Integer, changeInd3D(n,1,lHalf,n,m,l) + subStencil3D(1,3,2,Ind_relative));
+# indvertex2  = round.(Integer, changeInd3D(n,1,lHalf,n,m,l) + subStencil3D(1,3,2,Ind_relative));
 # for  x = xmax,  y = ymin z = anything
     (Row, Col, Val) = createIndices(Ind[end,1,2:end-1][:],
                                     Indices[9][:], (Values[9]*Entries[9])[:]);
@@ -2019,7 +2071,7 @@ function buildSparseAG3D(k::Float64,X::Array{Float64,1},Y::Array{Float64,1},
     colA = vcat(colA,Col);
     valA = vcat(valA,Val);
 
-# indvertex3  = round(Integer, changeInd3D(1,m,lHalf,n,m,l) + subStencil3D(3,1,2,Ind_relative));
+# indvertex3  = round.(Integer, changeInd3D(1,m,lHalf,n,m,l) + subStencil3D(3,1,2,Ind_relative));
 # for  x = xmin,  y = ymax z = anything
     (Row, Col, Val) = createIndices(Ind[1,end,2:end-1][:],
                                     Indices[10][:], (Values[10]*Entries[10])[:]);
@@ -2028,7 +2080,7 @@ function buildSparseAG3D(k::Float64,X::Array{Float64,1},Y::Array{Float64,1},
     colA = vcat(colA,Col);
     valA = vcat(valA,Val);
 
-# indvertex4  = round(Integer, changeInd3D(n,m,lHalf,n,m,l) + subStencil3D(1,1,2,Ind_relative));
+# indvertex4  = round.(Integer, changeInd3D(n,m,lHalf,n,m,l) + subStencil3D(1,1,2,Ind_relative));
 # for  x = xmax,  y = ymax z = anything
     (Row, Col, Val) = createIndices(Ind[end,end,2:end-1][:],
                                     Indices[11][:], (Values[11]*Entries[11])[:]);
@@ -2037,7 +2089,7 @@ function buildSparseAG3D(k::Float64,X::Array{Float64,1},Y::Array{Float64,1},
     colA = vcat(colA,Col);
     valA = vcat(valA,Val);
 
-# indvertex5  = round(Integer, changeInd3D(1,mHalf,1,n,m,l) + subStencil3D(3,2,3,Ind_relative));
+# indvertex5  = round.(Integer, changeInd3D(1,mHalf,1,n,m,l) + subStencil3D(3,2,3,Ind_relative));
 # for  x = xmax,  y = ymax z = anything
     (Row, Col, Val) = createIndices(Ind[1,2:end-1,1][:],
                                     Indices[12][:], (Values[12]*Entries[12])[:]);
@@ -2046,7 +2098,7 @@ function buildSparseAG3D(k::Float64,X::Array{Float64,1},Y::Array{Float64,1},
     colA = vcat(colA,Col);
     valA = vcat(valA,Val);
 
-# indvertex6  = round(Integer, changeInd3D(n,mHalf,1,n,m,l) + subStencil3D(1,2,3,Ind_relative));
+# indvertex6  = round.(Integer, changeInd3D(n,mHalf,1,n,m,l) + subStencil3D(1,2,3,Ind_relative));
 # for  x = xmax,  y = any z = zmin
     (Row, Col, Val) = createIndices(Ind[end,2:end-1,1][:],
                                     Indices[13][:], (Values[13]*Entries[13])[:]);
@@ -2055,7 +2107,7 @@ function buildSparseAG3D(k::Float64,X::Array{Float64,1},Y::Array{Float64,1},
     colA = vcat(colA,Col);
     valA = vcat(valA,Val);
 
-# indvertex7  = round(Integer, changeInd3D(1,mHalf,l,n,m,l) + subStencil3D(3,2,1,Ind_relative));
+# indvertex7  = round.(Integer, changeInd3D(1,mHalf,l,n,m,l) + subStencil3D(3,2,1,Ind_relative));
 # for  x = xmin,  y = any z = zmax
     (Row, Col, Val) = createIndices(Ind[1,2:end-1,end][:],
                                     Indices[14][:], (Values[14]*Entries[14])[:]);
@@ -2064,7 +2116,7 @@ function buildSparseAG3D(k::Float64,X::Array{Float64,1},Y::Array{Float64,1},
     colA = vcat(colA,Col);
     valA = vcat(valA,Val);
 
-# indvertex8  = round(Integer, changeInd3D(n,mHalf,l,n,m,l) + subStencil3D(1,2,1,Ind_relative));
+# indvertex8  = round.(Integer, changeInd3D(n,mHalf,l,n,m,l) + subStencil3D(1,2,1,Ind_relative));
 # for  x = xmax,  y = any  z = zmax
     (Row, Col, Val) = createIndices(Ind[end,2:end-1,end][:],
                                     Indices[15][:], (Values[15]*Entries[15])[:]);
@@ -2073,7 +2125,7 @@ function buildSparseAG3D(k::Float64,X::Array{Float64,1},Y::Array{Float64,1},
     colA = vcat(colA,Col);
     valA = vcat(valA,Val);
 
-# indvertex9  = round(Integer, changeInd3D(nHalf,1,1,n,m,l) + subStencil3D(2,3,3,Ind_relative));
+# indvertex9  = round.(Integer, changeInd3D(nHalf,1,1,n,m,l) + subStencil3D(2,3,3,Ind_relative));
 # for  x = any,  y = tmin  z = zmin
     (Row, Col, Val) = createIndices(Ind[2:end-1,1,1][:],
                                     Indices[16][:], (Values[16]*Entries[16])[:]);
@@ -2082,7 +2134,7 @@ function buildSparseAG3D(k::Float64,X::Array{Float64,1},Y::Array{Float64,1},
     colA = vcat(colA,Col);
     valA = vcat(valA,Val);
 
-# indvertex10 = round(Integer, changeInd3D(nHalf,m,1,n,m,l) + subStencil3D(2,1,3,Ind_relative));
+# indvertex10 = round.(Integer, changeInd3D(nHalf,m,1,n,m,l) + subStencil3D(2,1,3,Ind_relative));
 # for  x = any,  y = ymax  z = zmin
     (Row, Col, Val) = createIndices(Ind[2:end-1,end,1][:],
                                     Indices[17][:], (Values[17]*Entries[17])[:]);
@@ -2091,7 +2143,7 @@ function buildSparseAG3D(k::Float64,X::Array{Float64,1},Y::Array{Float64,1},
     colA = vcat(colA,Col);
     valA = vcat(valA,Val);
 
-# indvertex11 = round(Integer, changeInd3D(nHalf,1,l,n,m,l) + subStencil3D(2,3,1,Ind_relative));
+# indvertex11 = round.(Integer, changeInd3D(nHalf,1,l,n,m,l) + subStencil3D(2,3,1,Ind_relative));
 # for  x = any,  y = ymin  z = zmax
     (Row, Col, Val) = createIndices(Ind[2:end-1,1,end][:],
                                     Indices[18][:], (Values[18]*Entries[18])[:]);
@@ -2100,7 +2152,7 @@ function buildSparseAG3D(k::Float64,X::Array{Float64,1},Y::Array{Float64,1},
     colA = vcat(colA,Col);
     valA = vcat(valA,Val);
 
-# indvertex12 = round(Integer, changeInd3D(nHalf,m,l,n,m,l) + subStencil3D(2,1,1,Ind_relative));
+# indvertex12 = round.(Integer, changeInd3D(nHalf,m,l,n,m,l) + subStencil3D(2,1,1,Ind_relative));
 # for  x = any,  y = ymax  z = zmax
     (Row, Col, Val) = createIndices(Ind[2:end-1,end,end][:],
                                     Indices[19][:], (Values[19]*Entries[19])[:]);
@@ -2113,56 +2165,56 @@ function buildSparseAG3D(k::Float64,X::Array{Float64,1},Y::Array{Float64,1},
 ############## Now we incorporate the corners  ##################################
 #################################################################################
 
-# indcorner1 = round(Integer, changeInd3D(1,1,1,n,m,l) + Ind_relative[2:3,2:3,2:3][:]);
+# indcorner1 = round.(Integer, changeInd3D(1,1,1,n,m,l) + Ind_relative[2:3,2:3,2:3][:]);
     (Row, Col, Val) = createIndices(Ind[1,1,1],
                                     Indices[20][:], (Values[20]*Entries[20])[:]);
 
     rowA = vcat(rowA,Row)
     colA = vcat(colA,Col)
     valA = vcat(valA,Val)
-# indcorner2 = round(Integer, changeInd3D(n,1,1,n,m,l) + Ind_relative[1:2,2:3,2:3][:]);
+# indcorner2 = round.(Integer, changeInd3D(n,1,1,n,m,l) + Ind_relative[1:2,2:3,2:3][:]);
     (Row, Col, Val) = createIndices(Ind[end,1,1],
                                     Indices[21][:], (Values[21]*Entries[21])[:]);
 
     rowA = vcat(rowA,Row)
     colA = vcat(colA,Col)
     valA = vcat(valA,Val)
-# indcorner3 = round(Integer, changeInd3D(1,m,1,n,m,l) + Ind_relative[2:3,1:2,2:3][:]);
+# indcorner3 = round.(Integer, changeInd3D(1,m,1,n,m,l) + Ind_relative[2:3,1:2,2:3][:]);
     (Row, Col, Val) = createIndices(Ind[1,end,1],
                                     Indices[22][:], (Values[22]*Entries[22])[:]);
 
     rowA = vcat(rowA,Row)
     colA = vcat(colA,Col)
     valA = vcat(valA,Val)
-# indcorner4 = round(Integer, changeInd3D(n,m,1,n,m,l) + Ind_relative[1:2,1:2,2:3][:]);
+# indcorner4 = round.(Integer, changeInd3D(n,m,1,n,m,l) + Ind_relative[1:2,1:2,2:3][:]);
     (Row, Col, Val) = createIndices(Ind[end,end,1],
                                     Indices[23][:], (Values[23]*Entries[23])[:]);
 
     rowA = vcat(rowA,Row)
     colA = vcat(colA,Col)
     valA = vcat(valA,Val)
-# indcorner5 = round(Integer, changeInd3D(1,1,l,n,m,l) + Ind_relative[2:3,2:3,1:2][:]);
+# indcorner5 = round.(Integer, changeInd3D(1,1,l,n,m,l) + Ind_relative[2:3,2:3,1:2][:]);
     (Row, Col, Val) = createIndices(Ind[1,1,end],
                                     Indices[24][:], (Values[24]*Entries[24])[:]);
 
     rowA = vcat(rowA,Row)
     colA = vcat(colA,Col)
     valA = vcat(valA,Val)
-# indcorner6 = round(Integer, changeInd3D(n,1,l,n,m,l) + Ind_relative[1:2,2:3,1:2][:]);
+# indcorner6 = round.(Integer, changeInd3D(n,1,l,n,m,l) + Ind_relative[1:2,2:3,1:2][:]);
     (Row, Col, Val) = createIndices(Ind[end,1,end],
                                     Indices[25][:], (Values[25]*Entries[25])[:]);
 
     rowA = vcat(rowA,Row)
     colA = vcat(colA,Col)
     valA = vcat(valA,Val)
-# indcorner7 = round(Integer, changeInd3D(1,m,l,n,m,l) + Ind_relative[2:3,1:2,1:2][:]);
+# indcorner7 = round.(Integer, changeInd3D(1,m,l,n,m,l) + Ind_relative[2:3,1:2,1:2][:]);
     (Row, Col, Val) = createIndices(Ind[1,end,end],
                                     Indices[26][:], (Values[26]*Entries[26])[:]);
 
     rowA = vcat(rowA,Row)
     colA = vcat(colA,Col)
     valA = vcat(valA,Val)
-# indcorner8 = round(Integer, changeInd3D(n,m,l,n,m,l) + Ind_relative[1:2,1:2,1:2][:]);
+# indcorner8 = round.(Integer, changeInd3D(n,m,l,n,m,l) + Ind_relative[1:2,1:2,1:2][:]);
     (Row, Col, Val) = createIndices(Ind[end,end,end],
                                     Indices[27][:], (Values[27]*Entries[27])[:]);
 
@@ -2192,7 +2244,7 @@ end
 #   N = n*m;
 
 #   # computing the entries for the interior
-#   indVol = round(Integer, n*(m-1)/2 + (n+1)/2 + [-1,0,1,n,n-1,n+1,-n,-n-1, -n+1]);
+#   indVol = round.(Integer, n*(m-1)/2 + (n+1)/2 + [-1,0,1,n,n-1,n+1,-n,-n-1, -n+1]);
 #   indVolC = setdiff(collect(1:N),indVol);
 #   GSampled = sampleG(k,X,Y,indVol, D0)[:,indVolC ];
 #   (n,l) = size(GSampled);
@@ -2205,7 +2257,7 @@ end
 #   push!(Indices,[-1,0,1,n,n-1,n+1,-n,-n-1, -n+1]);
 
 #   # for  x = xmin, y = 0
-#   indFz1 = round(Integer, n*(m-1)/2 +1 + [0,1,n,n+1,-n, -n+1]);
+#   indFz1 = round.(Integer, n*(m-1)/2 +1 + [0,1,n,n+1,-n, -n+1]);
 #   indC = setdiff(collect(1:N),indFz1);
 #   GSampled = sampleG(k,X,Y,indFz1, D0)[:,indC ];
 #   (n,l) = size(GSampled);
@@ -2218,7 +2270,7 @@ end
 #   push!(Indices, [0,1,n,n+1,-n, -n+1]); #'
 
 #   # for  x = xmax, y = 0
-#   indFz2 = round(Integer, n*(n-1)/2 + [-1,0,n,n-1,-n, -n-1]);
+#   indFz2 = round.(Integer, n*(n-1)/2 + [-1,0,n,n-1,-n, -n-1]);
 #   indC = setdiff(collect(1:N),indFz2);
 #   GSampled = sampleG(k,X,Y,indFz2, D0)[:,indC ];
 #   (n,l) = size(GSampled);
@@ -2231,7 +2283,7 @@ end
 #   push!(Indices,[-1,0,n,n-1,-n, -n-1]); #'
 
 #   # for  y = ymin, x = 0
-#   indFx1 = round(Integer, (n+1)/2 + [-1,0,1,n,n+1, n-1]);
+#   indFx1 = round.(Integer, (n+1)/2 + [-1,0,1,n,n+1, n-1]);
 #   indC = setdiff(collect(1:N),indFx1);
 #   GSampled = sampleG(k,X,Y,indFx1, D0)[:,indC ];
 #   (n,l) = size(GSampled);
@@ -2244,7 +2296,7 @@ end
 #   push!(Indices,[-1,0,1,n,n+1, n-1]); #'
 
 #   # for  y = ymin, x = 0
-#   indFx2 = round(Integer, N - (n+1)/2 + [-1,0,1,-n,-n+1, -n-1]);
+#   indFx2 = round.(Integer, N - (n+1)/2 + [-1,0,1,-n,-n+1, -n-1]);
 #   indC = setdiff(collect(1:N),indFx2);
 #   GSampled = sampleG(k,X,Y,indFx2, D0)[:,indC ];
 #   (n,l) = size(GSampled);
@@ -2257,10 +2309,10 @@ end
 #   push!(Indices,[-1,0,1,-n,-n+1, -n-1]); #'
 
 #   # For the corners
-#   indcorner1 = round(Integer, 1 + [0,1, n,n+1]);
-#   indcorner2 = round(Integer, n + [0,-1, n,n-1]);
-#   indcorner3 = round(Integer, n*m-n+1 + [0,1, -n,-n+1]);
-#   indcorner4 = round(Integer, n*m + [0,-1, -n,-n-1]);
+#   indcorner1 = round.(Integer, 1 + [0,1, n,n+1]);
+#   indcorner2 = round.(Integer, n + [0,-1, n,n-1]);
+#   indcorner3 = round.(Integer, n*m-n+1 + [0,1, -n,-n+1]);
+#   indcorner4 = round.(Integer, n*m + [0,-1, -n,-n-1]);
 
 #   indC = setdiff(collect(1:N),indcorner1);
 #   GSampled = sampleG(k,X,Y,indcorner1, D0)[:,indC ];

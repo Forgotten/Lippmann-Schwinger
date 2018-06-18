@@ -1,3 +1,5 @@
+using SpecialFunctions
+
 
 type FastMslowDual
     # type to encapsulate the fast application of M = I + omega^2G*spadiagm(nu)

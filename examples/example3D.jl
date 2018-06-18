@@ -18,7 +18,7 @@ FFTW.set_num_threads(4);
 BLAS.set_num_threads(4);
 
 #Defining Omega
-h = 1/32
+h = 1/64
 k = 1/h
 
 D0 = 0.0;
@@ -43,7 +43,7 @@ X = X[:]; Y = Y[:]; Z = Z[:];
 # Defining the smooth perturbation of the slowness
 nu(x,y,z) = 0.3*exp(-40*(x.^2 + y.^2 + z.^2)).*(abs(x).<0.48).*(abs(y).<0.48).*(abs(z).<0.48);
 
-# 
+#
 NU = reshape(nu(X,Y,Z), n,m,l);
 #
 figure(5); clf(); imshow(real(NU[:,:,15]))

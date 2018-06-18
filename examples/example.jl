@@ -5,6 +5,7 @@
 
 using PyPlot
 using IterativeSolvers
+using SpecialFunctions
 
 include("../src/FastConvolution.jl")
 include("../src/Preconditioner.jl")
@@ -36,10 +37,10 @@ Y = repmat(y', n,1)[:]
 D0 = D[1];
 
 # Defining the smooth perturbation of the slowness
-nu(x,y) = 0.3*exp(-40*(x.^2 + y.^2)).*(abs(x).<0.48).*(abs(y).<0.48);
+nu(x,y) = 0.3*exp.(-40*(x.^2 + y.^2)).*(abs.(x).<0.48).*(abs.(y).<0.48);
 
 ## You can choose between Duan Rohklin trapezoidal quadrature
-# fastconv = buildFastConvolution(x,y,h,k,nu)
+#fastconv = buildFastConvolution(x,y,h,k,nu)
 
 # or Greengard Vico Quadrature (this is not optimized and is 2-3 times slower)
 fastconv = buildFastConvolution(x,y,h,k,nu, quadRule = "Greengard_Vico");
@@ -54,7 +55,7 @@ fastconv = buildFastConvolution(x,y,h,k,nu, quadRule = "Greengard_Vico");
 precond = SparsifyingPreconditioner(Mapproxsp, As)#, solverType="MKLPardiso")
 
 # building the RHS from the incident field
-u_inc = exp(k*im*X);
+u_inc = exp.(k*im*X);
 rhs = -k^2*FFTconvolution(fastconv, nu(X,Y).*u_inc) ;
 
 #rhs = u_inc;
@@ -63,8 +64,8 @@ rhs = -k^2*FFTconvolution(fastconv, nu(X,Y).*u_inc) ;
 u = zeros(Complex128,N);
 
 # solving the system using GMRES
-@time info =  gmres!(u, fastconv, rhs, precond)
-println(info[2].residuals[:])
+@time info =  gmres!(u, fastconv, rhs, Pl=precond, log = true)
+#println(info[2].residuals[:])
 
 # plotting the solution
 figure(1)
