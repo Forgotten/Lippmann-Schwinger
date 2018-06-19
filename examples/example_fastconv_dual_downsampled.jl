@@ -4,6 +4,8 @@
 
 using PyPlot
 using IterativeSolvers
+using SpecialFunctions
+
 
 include("../src/FastConvolutionDual.jl")
 include("../src/FastConvolution.jl")
@@ -34,13 +36,13 @@ Y = repmat(y', n,1)[:];
 (ppw,D) = referenceValsTrapRule();
 D0 = D[1];
 
-window(y,alpha) = 1*(abs(y).<=alpha/2) + (abs(y).>alpha/2).*(abs(y).<alpha).*
-                     exp(2*exp(-0.5*alpha./(abs(y)-alpha/2))./
-                         ((abs(y)-alpha/2)./(0.5*alpha)-1) )
+window(y,alpha) = 1*(abs.(y).<=alpha/2) + (abs.(y).>alpha/2).*(abs.(y).<alpha).*
+                     exp.(2*exp.(-0.5*alpha./(abs.(y)-alpha/2))./
+                         ((abs.(y)-alpha/2)./(0.5*alpha)-1) )
 
-window(y,alpha, beta) = 1*(abs(y).<=beta) + (abs(y).>beta).*(abs(y).<alpha).*
-                           exp(2*exp(-(alpha- beta)./(abs(y)-beta))./
-                               ((abs(y)-beta)./(alpha- beta)-1) )
+window(y,alpha, beta) = 1*(abs.(y).<=beta) + (abs.(y).>beta).*(abs.(y).<alpha).*
+                           exp.(2*exp.(-(alpha- beta)./(abs.(y)-beta))./
+                               ((abs.(y)-beta)./(alpha- beta)-1) )
 
 # Defining the smooth perturbation of the slowness
 nu(x,y) = -0.05*(sin(4*pi*x/(0.96))).*
@@ -64,7 +66,7 @@ sigmaSlow = zeros(Complex128,N);
 
 # solving the system using GMRES
 @time info =  gmres!(sigmaSlow, fastconvSlowDual, rhsSlowDual, maxiter = 10 )
-println(info[2].residuals[:])
+# println(info[2].residuals[:])
 
 using Interpolations
 
@@ -94,7 +96,7 @@ Sampling = S[index,:];
 sigmaSlowDown = zeros(Complex128, size(Sampling)[1])
 
 @time info =  gmres!(sigmaSlowDown, fastconvSlowDualDown, Sampling*rhsSlowDual, maxiter = 10 )
-println(info[2].residuals[:])
+# println(info[2].residuals[:])
 
 
 
@@ -121,7 +123,7 @@ imshow(real(interpsigma)); colorbar();
 title("interpolated sigma slow")
 
 
-normSigmaSlow = maximum(abs(sigmaSlow))
+normSigmaSlow = maximum(abs.(sigmaSlow))
 
 figure(15);
 clf();

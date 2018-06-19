@@ -71,7 +71,7 @@ sigma = zeros(Complex128,N);
 
 # solving the system using GMRES
 @time info =  gmres!(sigma, fastconvDual, rhsDual, maxiter = 10 )
-println(info[2].residuals[:])
+# println(info[2].residuals[:])
 
 figure(4)
 clf()
@@ -123,7 +123,7 @@ sigmaSlow = zeros(Complex128,N);
 
 # solving the system using GMRES
 @time info =  gmres!(sigmaSlow, fastconvSlowDual, rhsSlowDual, maxiter = 10 )
-println(info[2].residuals[:])
+# println(info[2].residuals[:])
 
 
 figure(11)

@@ -32,7 +32,28 @@ type FastDualDownSampled
     end
 end
 
+# we need to overload these functions for gmres
 import Base.*
+import Base.A_mul_B!
+import Base.size
+
+function size(M::FastDualDownSampled, dim::Int64)
+  # function to returns the size of the underliying matrix i.e. the rank of M.S
+  return size(M.S,1)
+end
+
+
+function A_mul_B!(Y,
+                  M::FastDualDownSampled,
+                  V)
+    # in place matrix matrix multiplication
+    @assert(size(Y) == size(V))
+    # print(size(V))
+    for ii = 1:size(V,2)
+        Y[:,ii] = M*V[:,ii]
+    end
+end
+
 
 function *(M::FastDualDownSampled, b::Array{Complex128,1})
     knots = (collect(1:M.downsampleX:M.n), collect(1:M.downsampleY:M.m))
@@ -49,7 +70,7 @@ function *(M::FastDualDownSampled, b::Array{Complex128,1})
                            collect(M.downsampleY:M.m+M.downsampleY-1)/M.downsampleY];
 
     u = M.Fast*interpU[:]
-
+    size(u)
     # Subsampling the wavefield
     return (M.S*u)[:]
 end

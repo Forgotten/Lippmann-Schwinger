@@ -30,7 +30,28 @@ type FastMslowDual
 end
 
 
+# we need to overload these functions for gmres
 import Base.*
+import Base.A_mul_B!
+import Base.size
+
+function size(M::FastMslowDual, dim::Int64)
+  # function to returns the size of the underliying matrix (M.m*M.n)^2
+  return M.m*M.n
+end
+
+
+function A_mul_B!(Y,
+                  M::FastMslowDual,
+                  V)
+    # in place matrix matrix multiplication
+    @assert(size(Y) == size(V))
+    # print(size(V))
+    for ii = 1:size(V,2)
+        Y[:,ii] = M*V[:,ii]
+    end
+end
+
 
 function *(M::FastMslowDual, b::Array{Complex128,1})
     # function to overload the applyication of
@@ -134,7 +155,7 @@ function buildFastConvolutionSlowDual(x::Array{Float64,1},y::Array{Float64,1},
         KX = (2*pi/Lp)*repmat(kx, 1, 4*m);
         KY = (2*pi/Lp)*repmat(ky', 4*n,1);
 
-        S = sqrt(KX.^2 + KY.^2);
+        S = sqrt.(KX.^2 + KY.^2);
 
         GFFT = Gtruncated2D(L, k, S)
         return FastMslowDual(GFFT, nu(X,Y),X,Y, 4*n, 4*m,
@@ -146,7 +167,7 @@ function buildFastConvolutionSlowDual(x::Array{Float64,1},y::Array{Float64,1},
         KX = (2*pi/Lp)*repmat( kx, 1,4*m);
         KY = (2*pi/Lp)*repmat(ky',4*n,  1);
 
-        S = sqrt(KX.^2 + KY.^2);
+        S = sqrt.(KX.^2 + KY.^2);
 
         GFFT = Gtruncated2D(L, k, S)
 

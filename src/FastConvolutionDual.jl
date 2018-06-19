@@ -22,6 +22,7 @@ type FastMDual
     end
 end
 
+# we need to overload these functions for gmres
 import Base.*
 import Base.A_mul_B!
 import Base.size
